@@ -10,11 +10,13 @@ export default defineConfig({
     },
   },
   test: {
+    setupFiles: ["./tests/setup.ts"],
     exclude: [
       "**/node_modules/**",
       "**/.git/**",
       "**/dist/**",
       "**/.react-router/**",
+      "**/e2e/**",
     ],
   },
 });
