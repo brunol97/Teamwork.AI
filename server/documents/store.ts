@@ -1,4 +1,4 @@
-import { eq } from "@agent-native/core/db/schema";
+import { and, eq, sql } from "@agent-native/core/db/schema";
 import { randomUUID } from "node:crypto";
 
 import { getDb } from "../db/client.js";
@@ -9,7 +9,26 @@ import { appendSection } from "./markdown.js";
 export interface WorkDocument {
   taskId: string;
   markdown: string;
+  /**
+   *versie van het werkdocument. Elke schrijfactie verhoogt hem, zodat de tweede
+   * bewerker een conflict kan herkennen in plaats van wijzigingen te overschrijven.
+   */
+  version: number;
   updatedAt: number;
+}
+
+/** Wordt gegooid wanneer een schrijfactie een verouderde versie probeert te overschrijven. */
+export class WorkDocumentConflictError extends Error {
+  readonly workDocumentConflict = true;
+  readonly currentVersion: number;
+
+  constructor(currentVersion: number) {
+    super(
+      "Iemand anders heeft het werkdocument gewijzigd. Herlaad het werkdocument om de wijziging te zien.",
+    );
+    this.name = "WorkDocumentConflictError";
+    this.currentVersion = currentVersion;
+  }
 }
 
 export type ActorType = "user" | "agent" | "system";
@@ -20,6 +39,11 @@ export interface SaveWorkDocumentInput {
   markdown: string;
   actorType: ActorType;
   actorId: string;
+  /**
+   * Versie die de aanroeper heeft gelezen. Ontbreekt deze, dan schrijft de
+   * aanroeper blind (bijvoorbeeld de agent die een sectie toevoegt).
+   */
+  expectedVersion?: number;
 }
 
 export interface AddSectionInput {
@@ -53,10 +77,15 @@ export async function getWorkDocument(
 
   const row = rows[0];
   if (!row) {
-    return { taskId, markdown: "", updatedAt: 0 };
+    return { taskId, markdown: "", version: 0, updatedAt: 0 };
   }
 
-  return { taskId: row.taskId, markdown: row.markdown, updatedAt: row.updatedAt };
+  return {
+    taskId: row.taskId,
+    markdown: row.markdown,
+    version: row.version,
+    updatedAt: row.updatedAt,
+  };
 }
 
 /** Slaat de volledige markdown van het werkdocument op en logt de wijziging. */
@@ -66,6 +95,7 @@ export async function saveWorkDocument({
   markdown,
   actorType,
   actorId,
+  expectedVersion,
 }: SaveWorkDocumentInput): Promise<WorkDocument | undefined> {
   return writeWorkDocument({
     taskId,
@@ -75,6 +105,7 @@ export async function saveWorkDocument({
     actorId,
     eventType: "document_changed",
     eventData: null,
+    expectedVersion,
   });
 }
 
@@ -111,6 +142,7 @@ async function writeWorkDocument({
   actorId,
   eventType,
   eventData,
+  expectedVersion,
 }: {
   taskId: string;
   orgId: string;
@@ -119,6 +151,7 @@ async function writeWorkDocument({
   actorId: string;
   eventType: string;
   eventData: string | null;
+  expectedVersion?: number;
 }): Promise<WorkDocument | undefined> {
   const task = await getTask(taskId, orgId);
   if (!task) {
@@ -128,21 +161,89 @@ async function writeWorkDocument({
   const db = getDb();
   const now = Date.now();
 
-  await db
-    .insert(workDocuments)
-    .values({
-      id: randomUUID(),
-      taskId,
-      markdown,
-      createdAt: now,
-      updatedAt: now,
-    })
-    .onConflictDoUpdate({
-      target: workDocuments.taskId,
-      set: { markdown, updatedAt: now },
-    });
+  const version = await writeContentWithVersionCheck({
+    taskId,
+    markdown,
+    now,
+    expectedVersion,
+  });
 
   await createTaskEvent(taskId, actorType, actorId, eventType, eventData);
 
-  return { taskId, markdown, updatedAt: now };
+  return { taskId, markdown, version, updatedAt: now };
+}
+
+/**
+ * Schrijft de markdown weg met een check-and-set op de versie. Zonder
+ * `expectedVersion` wordt de huidige versie opgehaald en het schrijven een paar
+ * keer herhaald, zodat twee gelijktijdige aanpassingen elkaar niet overschrijven.
+ */
+async function writeContentWithVersionCheck({
+  taskId,
+  markdown,
+  now,
+  expectedVersion,
+}: {
+  taskId: string;
+  markdown: string;
+  now: number;
+  expectedVersion?: number;
+}): Promise<number> {
+  const db = getDb();
+  const attempts = expectedVersion === undefined ? 5 : 1;
+
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    const targetVersion =
+      expectedVersion === undefined
+        ? (await readVersion(taskId)) ?? 0
+        : expectedVersion;
+
+    // Maak het werkdocument aan als de taak nog geen werkdocument heeft.
+    const inserted = await db
+      .insert(workDocuments)
+      .values({
+        id: randomUUID(),
+        taskId,
+        markdown,
+        version: targetVersion + 1,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoNothing({ target: workDocuments.taskId })
+      .returning({ version: workDocuments.version });
+
+    if (inserted.length > 0) {
+      return inserted[0].version;
+    }
+
+    const updated = await db
+      .update(workDocuments)
+      .set({
+        markdown,
+        updatedAt: now,
+        version: sql`${workDocuments.version} + 1`,
+      })
+      .where(
+        and(eq(workDocuments.taskId, taskId), eq(workDocuments.version, targetVersion)),
+      )
+      .returning({ version: workDocuments.version });
+
+    if (updated.length > 0) {
+      return updated[0].version;
+    }
+  }
+
+  const currentVersion = (await readVersion(taskId)) ?? 0;
+  throw new WorkDocumentConflictError(currentVersion);
+}
+
+async function readVersion(taskId: string): Promise<number | undefined> {
+  const db = getDb();
+  const rows = await db
+    .select({ version: workDocuments.version })
+    .from(workDocuments)
+    .where(eq(workDocuments.taskId, taskId))
+    .limit(1);
+
+  return rows[0]?.version;
 }

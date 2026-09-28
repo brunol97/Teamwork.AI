@@ -29,7 +29,7 @@ describe("werkdocument actions", () => {
       { taskId: task.id },
       ctxForOrg("org-actions"),
     );
-    expect(empty).toEqual({ taskId: task.id, markdown: "", updatedAt: 0 });
+    expect(empty).toEqual({ taskId: task.id, markdown: "", version: 0, updatedAt: 0 });
 
     await updateWorkDocumentAction.run(
       { taskId: task.id, markdown: "# Eisen\n\n- Snelheid\n" },

@@ -2,6 +2,9 @@ import { useActionMutation, useActionQuery } from "@agent-native/core/client/hoo
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router";
 
+import { FollowTaskButton, MeldingenPanel } from "@/components/task/MeldingenPanel";
+import { InviteLinkPanel } from "@/components/task/InviteLinkPanel";
+import { PresenceBar } from "@/components/task/PresenceBar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -43,9 +46,10 @@ function describeEvent(event: ActivityEvent): { actor: string; text: string } {
 export default function TaskDetailRoute() {
   const { taskId } = useParams<{ taskId: string }>();
   const { data, isLoading } = useActionQuery("get-task", { id: taskId ?? "" });
-  const { data: workDocument } = useActionQuery("get-work-document", {
-    taskId: taskId ?? "",
-  });
+  const { data: workDocument, refetch: refetchWorkDocument } = useActionQuery(
+    "get-work-document",
+    { taskId: taskId ?? "" },
+  );
   const { mutate: sendMessage, isPending } = useActionMutation("send-task-message");
   const { mutate: saveWorkDocument, isPending: isSaving } = useActionMutation(
     "update-work-document",
@@ -53,12 +57,15 @@ export default function TaskDetailRoute() {
   const [message, setMessage] = useState("");
   const [markdown, setMarkdown] = useState("");
   const [unsavedChanges, setUnsavedChanges] = useState(false);
+  const [version, setVersion] = useState(0);
+  const [conflict, setConflict] = useState<string | null>(null);
   const editorRef = useRef<HTMLTextAreaElement>(null);
 
   // Volg het werkdocument van de server zolang de gebruiker niets heeft getypt.
   useEffect(() => {
     if (workDocument && !unsavedChanges) {
       setMarkdown(workDocument.markdown);
+      setVersion(workDocument.version);
     }
   }, [workDocument, unsavedChanges]);
 
@@ -91,8 +98,15 @@ export default function TaskDetailRoute() {
   const save = () => {
     if (!taskId) return;
     saveWorkDocument(
-      { taskId, markdown },
-      { onSuccess: () => setUnsavedChanges(false) },
+      { taskId, markdown, expectedVersion: version },
+      {
+        onSuccess: (document) => {
+          setUnsavedChanges(false);
+          setConflict(null);
+          setVersion(document.version);
+        },
+        onError: (error) => setConflict(error.message),
+      },
     );
   };
 
@@ -108,11 +122,17 @@ export default function TaskDetailRoute() {
 
   return (
     <div className="mx-auto flex h-full max-w-5xl flex-col p-6">
-      <div className="mb-4">
-        <h1 className="text-2xl font-semibold">{task.title}</h1>
-        <p className="text-sm text-muted-foreground">
-          {task.projectName} · {task.status} · lead: {task.leadId}
-        </p>
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h1 className="text-2xl font-semibold">{task.title}</h1>
+          <p className="text-sm text-muted-foreground">
+            {task.projectName} · {task.status} · lead: {task.leadId}
+          </p>
+        </div>
+        <div className="flex flex-col items-end gap-2">
+          <FollowTaskButton taskId={task.id} />
+          <PresenceBar taskId={task.id} />
+        </div>
       </div>
 
       <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-2">
@@ -159,6 +179,30 @@ export default function TaskDetailRoute() {
               sectie over datamigratie&quot;.
             </p>
           </div>
+
+          {conflict ? (
+            <div
+              role="alert"
+              data-testid="conflict-melding"
+              className="mt-2 rounded-md border p-2 text-xs"
+            >
+              {conflict} Jouw tekst staat nog in het veld; herlaad om de versie van de
+              ander te zien.
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="ml-2"
+                onClick={() => {
+                  setUnsavedChanges(false);
+                  setConflict(null);
+                  refetchWorkDocument();
+                }}
+              >
+                Herladen
+              </Button>
+            </div>
+          ) : null}
         </section>
 
         <section className="flex min-h-0 flex-col gap-3">
@@ -207,6 +251,9 @@ export default function TaskDetailRoute() {
               {isPending ? "Bezig..." : "Verstuur"}
             </Button>
           </form>
+
+          <MeldingenPanel taskId={task.id} />
+          <InviteLinkPanel taskId={task.id} />
         </section>
       </div>
     </div>
