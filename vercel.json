@@ -1,4 +1,10 @@
 {
-  "framework": "nextjs",
-  "regions": ["iad1"]
+  "version": 2,
+  "buildCommand": "pnpm build",
+  "installCommand": "pnpm install",
+  "framework": null,
+  "outputDirectory": ".vercel/output",
+  "env": {
+    "NITRO_PRESET": "vercel"
+  }
 }
