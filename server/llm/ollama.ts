@@ -6,6 +6,18 @@ export interface OllamaMessage {
   content: string;
 }
 
+export const DEFAULT_OLLAMA_MODEL = "gpt-oss:120b";
+
+/**
+ * `ai-sdk-ollama` appends `/api/chat` to the base URL itself, so the base URL is
+ * the server root — `https://ollama.com`, not `https://ollama.com/api`. Earlier
+ * revisions of `.env.example` and the Vercel project used the `/api` form, so we
+ * tolerate and normalise it instead of failing with `path "/api/api/chat" not found`.
+ */
+export function normalizeOllamaBaseUrl(value: string): string {
+  return value.trim().replace(/\/+$/, "").replace(/\/api$/, "");
+}
+
 export async function generateOllamaResponse(
   system: string,
   messages: OllamaMessage[],
@@ -19,15 +31,17 @@ export async function generateOllamaResponse(
     return process.env.AGENT_OFFICE_MOCK_LLM_RESPONSE;
   }
 
-  const baseURL = options?.baseURL ?? process.env.OLLAMA_BASE_URL;
+  const rawBaseURL = options?.baseURL ?? process.env.OLLAMA_BASE_URL;
   const apiKey = options?.apiKey ?? process.env.OLLAMA_API_KEY;
-  const model = options?.model ?? "llama3.2";
+  const model = options?.model ?? process.env.OLLAMA_MODEL ?? DEFAULT_OLLAMA_MODEL;
 
-  if (!baseURL) {
+  if (!rawBaseURL) {
     throw new Error(
-      "OLLAMA_BASE_URL is not configured. Set it in your environment to use the local Ollama endpoint.",
+      "OLLAMA_BASE_URL is not configured. Use the server root: https://ollama.com for Ollama Cloud, or http://localhost:11434 for a local Ollama.",
     );
   }
+
+  const baseURL = normalizeOllamaBaseUrl(rawBaseURL);
 
   const ollama = createOllama({
     baseURL,
