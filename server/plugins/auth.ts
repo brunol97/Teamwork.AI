@@ -1,17 +1,16 @@
 import { createAuthPlugin } from "@agent-native/core/server";
 
-const rawAppTitle = "Agent Native Chat";
-const appTitle = rawAppTitle === "{" + "{APP_TITLE}}" ? "Chat" : rawAppTitle;
+const appTitle = "Agent Office";
 
 export default createAuthPlugin({
   workspaceAppPublicPaths: ["/"],
   marketing: {
     appName: appTitle,
-    learnMoreUrl: "https://agent-native.com/apps/chat",
+    learnMoreUrl: "https://github.com/brunol97/Teamwork.AI",
     tagline:
-      "Start from a chat-first agent-native app and add actions, screens, and workflows as you grow.",
+      "Gedeelde werkplek waar teams en AI-agents samen aan taken werken.",
     features: [
-      "Full-page chat with durable threads and tool call history",
+      "Full-page chat met durable threads en tool call history",
       "Add actions once and use them from chat, UI, HTTP, MCP, A2A, and CLI",
       "Plug in your own agent runtime or build on the included app-agent loop",
     ],
