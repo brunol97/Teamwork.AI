@@ -43,3 +43,7 @@ learnings.md
 data/*.lock
 .vercel
 .env*
+
+test-results/
+/tmp/dev*.log
+/tmp/dev*.pid
