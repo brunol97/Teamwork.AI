@@ -142,7 +142,7 @@ export async function createTaskEvent(
   actorType: "user" | "agent" | "system",
   actorId: string,
   type: string,
-  data: string,
+  data: string | null,
 ): Promise<TaskEvent> {
   const db = getDb();
   const now = Date.now();

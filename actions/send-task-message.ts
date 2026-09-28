@@ -1,6 +1,8 @@
 import { defineAction, fail } from "@agent-native/core/action";
 import { z } from "zod";
 
+import { parseSectionRequest } from "../server/documents/markdown.js";
+import { addWorkDocumentSection } from "../server/documents/store.js";
 import { generateOllamaResponse } from "../server/llm/ollama.js";
 import {
   createTaskEvent,
@@ -10,7 +12,7 @@ import {
 
 export default defineAction({
   description:
-    "Send a message in a task and let the Ollama agent respond. Both messages are recorded in the activity log.",
+    "Send a message in a task and let the Ollama agent respond. Both messages are recorded in the activity log. When the user asks for a section ('schrijf een sectie over X'), the agent's answer is also added to the werkdocument of the task as a new section.",
   schema: z.object({
     taskId: z.string().min(1).describe("Task id"),
     message: z.string().min(1).describe("Message to send to the agent"),
@@ -50,10 +52,25 @@ export default defineAction({
 
     await createTaskEvent(taskId, "agent", "ollama", "message", response);
 
+    const sectionRequest = parseSectionRequest(message);
+    let documentSection: { title: string } | null = null;
+    if (sectionRequest) {
+      await addWorkDocumentSection({
+        taskId,
+        orgId,
+        title: sectionRequest.title,
+        body: response,
+        actorType: "agent",
+        actorId: "ollama",
+      });
+      documentSection = { title: sectionRequest.title };
+    }
+
     return {
       taskId,
       userMessage: message,
       agentMessage: response,
+      documentSection,
     };
   },
 });
