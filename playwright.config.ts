@@ -17,4 +17,16 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"] },
     },
   ],
+  webServer: {
+    command: "pnpm exec agent-native dev",
+    url: "http://localhost:8080",
+    reuseExistingServer: false,
+    timeout: 120_000,
+    env: {
+      DATABASE_URL: "pglite:./data/pglite-e2e",
+      AUTH_DISABLED: "true",
+      AGENT_OFFICE_MOCK_LLM_RESPONSE:
+        "Dit is een geautomatiseerd testantwoord van de Ollama-agent.",
+    },
+  },
 });

@@ -7,6 +7,7 @@ export interface NavigationState {
   view: string;
   path?: string;
   threadId?: string;
+  taskId?: string;
 }
 
 export function useNavigationState() {
@@ -15,10 +16,12 @@ export function useNavigationState() {
     requestSource: TAB_ID,
     getNavigationState: ({ pathname }) => {
       const threadId = threadIdFromPath(pathname);
+      const taskId = taskIdFromPath(pathname);
       return {
         view: viewForPath(pathname),
         path: appPath(pathname),
         ...(threadId ? { threadId } : {}),
+        ...(taskId ? { taskId } : {}),
       };
     },
     getCommandPath: (command) =>
@@ -37,8 +40,20 @@ function threadIdFromPath(pathname: string): string | null {
   }
 }
 
+function taskIdFromPath(pathname: string): string | null {
+  const match = pathname.match(/^\/tasks\/([^/]+)/);
+  if (!match) return null;
+  try {
+    const value = decodeURIComponent(match[1]).trim();
+    return value || null;
+  } catch {
+    return null;
+  }
+}
+
 function viewForPath(pathname: string): string {
   if (isChatPath(pathname)) return "chat";
+  if (pathname.startsWith("/tasks")) return "tasks";
   if (pathname.startsWith("/database")) return "database";
   if (pathname.startsWith("/extensions")) return "extensions";
   if (pathname.startsWith("/observability")) return "observability";
@@ -56,6 +71,8 @@ function pathForView(view?: string): string {
     case "home":
     case "ask":
       return "/home";
+    case "tasks":
+      return "/tasks";
     case "database":
       return "/database";
     case "extensions":
