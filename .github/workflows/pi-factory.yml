@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   generate-context:
-    if: github.event.label.name == 'pi-implement'
+    if: github.event_name == 'issues' && github.event.label.name == 'pi-implement'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -179,7 +179,7 @@ jobs:
 
             \`\`\`bash
             git fetch
-git checkout ${branch}
+            git checkout ${branch}
             \`\`\`
 
             ### Stap 2: Run Pi met context + Matt Pocock skills

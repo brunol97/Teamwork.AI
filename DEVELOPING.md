@@ -240,6 +240,48 @@ When adding app data, define tables with `@agent-native/core/db/schema` helpers 
 | `DATABASE_URL`  | Production yes, local dev no | PostgreSQL or PGlite database URL (local dev default: `pglite:./data/pglite`) |
 | `AUTH_DISABLED` | Optional                     | Set to `true` or `1` to skip login/signup (local dev/preview only)            |
 
+## Deploy Flow
+
+Deployments are handled by **Vercel's Git integration**:
+
+1. **Pull request opened or updated** → Vercel builds a **Preview** deployment.
+2. **Pull request merged to `main`** → Vercel builds a **Production** deployment and aliases it to the production domain.
+3. **Database migrations run during the build** (`pnpm build` calls `tsx scripts/migrate.ts`).
+
+### Environment separation
+
+Set environment variables separately for **Production** and **Preview** in the Vercel dashboard or via `vercel env add`:
+
+| Variable | Production | Preview | Purpose |
+| --- | --- | --- | --- |
+| `DATABASE_URL` | Production Postgres | Preview/staging Postgres | Must be different so previews never touch production data. |
+| `BETTER_AUTH_SECRET` | Stable secret | Stable secret | Session signing. |
+| `APP_URL` | `https://agent-office-woad.vercel.app` | unset | Public URL for auth callbacks. Leave unset in Preview so Vercel infers the preview URL. |
+| `OLLAMA_BASE_URL` | `https://ollama.com/api` | `https://ollama.com/api` | Ollama API endpoint. |
+| `OLLAMA_API_KEY` | required | required | Ollama API key. |
+| `RESEND_API_KEY` | required | required | Magic-link email provider. |
+| `BETTER_AUTH_EMAIL_FROM` | required | required | Magic-link sender address. |
+
+### CI gating
+
+`.github/workflows/pr-ci.yml` runs on every PR:
+
+- `pnpm typecheck`
+- `pnpm test`
+- `pnpm build` (uses PGlite in CI, not a real database)
+
+A failing CI check blocks merging via branch protection (enable in GitHub repository settings).
+
+### Production smoke test
+
+After a production deploy, verify:
+
+```bash
+curl https://agent-office-woad.vercel.app/_agent-native/health
+```
+
+Expected: `{"ok":true,"ready":true,"db":true}`.
+
 ## Extensions (Framework Feature)
 
 The framework provides **Extensions** — mini sandboxed Alpine.js apps that run inside iframes. Extensions let users (or the agent) create interactive widgets, dashboards, and utilities without modifying the app's source code. They appear in the sidebar under an "Extensions" section. (Distinct from LLM tools — the function-calling primitives the agent invokes.)
