@@ -23,7 +23,7 @@ Single-context repo: one `CONTEXT.md` at the repo root and system-wide ADRs in `
 | `get-work-document` | User or agent reads the werkdocument of a task | `taskId` | `{ taskId, markdown, version, updatedAt }` |
 | `update-work-document` | User rewrites the whole werkdocument | `taskId`, `markdown`, `expectedVersion` | `{ taskId, markdown, version, updatedAt }`; a stale `expectedVersion` fails with a `conflict` |
 | `add-work-document-section` | Agent appends a section to the werkdocument | `taskId`, `title`, `body` | `{ taskId, sectionTitle, markdown }` |
-| `create-invite-link` | Beheerder wants to invite a second person to a task | `taskId`, `expiresInHours`, `invitedEmail` | `{ invite, links }` with the token of the link |
+| `create-invite-link` | Beheerder wants to invite a second person to a task | `taskId`, `expiresInHours`, `invitedEmail` | `{ invite, orgInvitation, links }` with the token of the link |
 | `list-invite-links` | Beheerder wants to see the links of a task | `taskId` | `{ links }` with state `geldig`, `verlopen` or `ingetrokken` |
 | `revoke-invite-link` | Beheerder wants to withdraw a link | `inviteId` | `{ invite }` |
 | `get-invite-link` | Someone opens an invitation link | `token` | `{ state, melding, taskId, taskTitle }` |
@@ -43,9 +43,10 @@ Task actions are scoped to the caller's organization. A user from another organi
 
 ## Samenwerken
 
-- A beheerder makes an **uitnodigingslink** per task (`create-invite-link`, `revoke-invite-link`). The second person opens `/uitnodiging/<token>` and becomes a member of the organization without a choice screen: `accept-invite-link` uses the framework's own membership paths (an open invitation on the email address, or automatic membership when the email domain matches) and then makes that organization active. The app never writes rows in the framework's `org_members` or `org_invitations` tables.
+- A beheerder makes an **uitnodigingslink** per task (`create-invite-link`, `revoke-invite-link`). The second person opens `/uitnodiging/<token>` and becomes a member of the organization without a choice screen: `accept-invite-link` uses the framework's own membership paths (an open invitation on the email address, or automatic membership when the email domain matches) and then makes that organization active. The app never writes a membership: the ledenlijst (`org_members`) blijft van het framework.
+- **Een link met `invitedEmail` maakt echt lidmaatschap.** De beheerder moet het e-mailadres van de bezoeker meegeven; `create-invite-link` maakt dan een openstaande uitnodiging in `org_invitations` aan (via de frameworktabel, met `invalidateMemberOrgCaches` erbij). Zonder e-mailadres verandert er niets en werkt de link alleen voor iemand die het framework al kent. `revoke-invite-link` haalt de bijbehorende openstaande uitnodiging ook weg, zodat een ingetrokken link geen toegang meer kan geven.
 - A verlopen or ingetrokken link never grants access and always returns a Dutch message (`get-invite-link` and `accept-invite-link`).
-- **Aanwezigheid**: the task page sends a heartbeat every few seconds (`set-task-presence`, one row per tab or device) and shows who else is looking. Clients disappear 15 seconds after the last heartbeat.
+- **Aanwezigheid**: the task page sends a heartbeat every few seconds (`set-task-presence`, one row per tab or device) and shows who else is looking. Clients disappear 15 seconds after the last heartbeat. Elke rij draagt zijn `organizationId`; `leave-task-presence` wist alleen binnen de eigen organisatie, zodat een bekende `clientId` geen aanwezigheid van een andere organisatie kan wissen.
 - **Volgen**: `follow-task` makes someone a volger; every agent reply in `send-task-message` then reaches the followers as a melding (`list-meldingen`, `mark-meldingen-read`).
 - Presence, messages and meldingen travel between people through the framework's sync (`useDbSync` in `app/root.tsx`), so the other person sees a change within about a second.
 

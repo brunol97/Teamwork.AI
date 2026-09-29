@@ -4,15 +4,29 @@ import { expect, test } from "@playwright/test";
 test.setTimeout(120_000);
 
 /**
- * Bovengrens voor live updates in deze test. Aanwezigheid wordt elke seconde
- * opnieuw gelezen en berichten komen via de framework-sync binnen; de marge is
- * er voor de eerste, trage reactie van een dev-server. De gemeten tijd staat in
- * de testuitvoer.
+ * Bovengrens voor live updates in deze test. In een opgewarmde run blijft de
+ * aanwezigheid rond de 850ms en het werkdocument en de melding ruim onder een
+ * seconde, dus een echte regressie (bijvoorbeeld een poll die pas na vier
+ * seconden herhaalt) valt hier op. De grens van 2,5 seconden geeft nog ruimte
+ * voor een trage CI-run; de gemeten tijd staat in de uitvoer en in de
+ * foutmelding.
  */
-const LIVE_BUDGET_MS = 5000;
+const LIVE_BUDGET_MS = 2500;
 
 /** Opwarmen van een koude dev-server, geen onderdeel van het gedrag. */
 const WARMUP_MS = 20_000;
+
+/** De PresenceBar leest elke seconde opnieuw; dit is dat interval uit `PresenceBar`. */
+const PRESENCE_POLL_MS = 1000;
+
+/** Meet een live update en geef bij een overschrijding de gemeten tijd mee. */
+function expectWithinLiveBudget(label: string, startedAt: number) {
+  const elapsed = Date.now() - startedAt;
+  expect(elapsed, `${label} duurde ${elapsed}ms, bovengrens is ${LIVE_BUDGET_MS}ms`).toBeLessThan(
+    LIVE_BUDGET_MS,
+  );
+  return elapsed;
+}
 
 test("T3: tweede persoon komt binnen via een uitnodigingslink en werkt mee", async ({
   request,
@@ -115,6 +129,10 @@ test("T3: tweede persoon komt binnen via een uitnodigingslink en werkt mee", asy
   await expect(page.getByTestId("aanwezig-aantal")).toHaveText("1 persoon aanwezig", {
     timeout: WARMUP_MS,
   });
+  // De aanwezigheidspoll loopt elke seconde. De eerste poll na het opwarmen
+  // is nog koud (dev-server, route nog niet gecompileerd), dus die telt niet
+  // mee in de budgetmeting: geef de poll twee intervallen om op gang te komen.
+  await page.waitForTimeout(2 * PRESENCE_POLL_MS);
 
   // The second person opens the same task. The first person sees that presence
   // within about a second.
@@ -125,8 +143,7 @@ test("T3: tweede persoon komt binnen via een uitnodigingslink en werkt mee", asy
   await expect(page.getByTestId("aanwezig-aantal")).toHaveText("2 personen aanwezig", {
     timeout: LIVE_BUDGET_MS,
   });
-  const aanwezigMs = Date.now() - sindsAanwezig;
-  expect(aanwezigMs).toBeLessThan(LIVE_BUDGET_MS);
+  const aanwezigMs = expectWithinLiveBudget("aanwezigheid", sindsAanwezig);
   await expect(page.getByTestId("aanwezig-chip")).toHaveText("dev@local.test");
 
   // The second person changes the werkdocument; the first person sees it live,
@@ -138,8 +155,7 @@ test("T3: tweede persoon komt binnen via een uitnodigingslink en werkt mee", asy
   await expect(page.getByLabel("Werkdocument in markdown")).toHaveValue(/# Eisen/, {
     timeout: LIVE_BUDGET_MS,
   });
-  const documentMs = Date.now() - sindsDocument;
-  expect(documentMs).toBeLessThan(LIVE_BUDGET_MS);
+  const documentMs = expectWithinLiveBudget("werkdocument", sindsDocument);
 
   // The first person keeps typing while the second person saves again. The save
   // of the first person is refused, so no work is lost silently.
@@ -191,8 +207,7 @@ test("T3: tweede persoon komt binnen via een uitnodigingslink en werkt mee", asy
   await expect(page.getByText("Antwoord van de agent in E2E Uitnodiging")).toBeVisible({
     timeout: LIVE_BUDGET_MS,
   });
-  const meldingMs = Date.now() - sindsMelding;
-  expect(meldingMs).toBeLessThan(LIVE_BUDGET_MS);
+  const meldingMs = expectWithinLiveBudget("bericht en melding", sindsMelding);
   console.log(
     `live updates: aanwezig ${aanwezigMs}ms, werkdocument ${documentMs}ms, bericht en melding ${meldingMs}ms`,
   );

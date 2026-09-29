@@ -1,7 +1,7 @@
 import { defineAction, fail } from "@agent-native/core/action";
 import { z } from "zod";
 
-import { clearTaskPresence, touchTaskPresence } from "../server/collaboration/presence.js";
+import { touchTaskPresence } from "../server/collaboration/presence.js";
 import { getTask } from "../server/tasks/store.js";
 
 export default defineAction({
@@ -29,7 +29,7 @@ export default defineAction({
       fail("Task not found.", { errorCode: "not_found", statusCode: 404 });
     }
 
-    await touchTaskPresence({ taskId, userId: userEmail, clientId });
+    await touchTaskPresence({ taskId, organizationId: orgId, userId: userEmail, clientId });
     return { taskId, clientId, lastSeenAt: Date.now() };
   },
 });

@@ -106,11 +106,15 @@ export const taskPresence = table(
   {
     clientId: text("client_id").primaryKey(),
     taskId: text("task_id").notNull(),
+    organizationId: text("organization_id").notNull(),
     userId: text("user_id").notNull(),
     lastSeenAt: bigint("last_seen_at", { mode: "number" }).notNull(),
     createdAt: bigint("created_at", { mode: "number" }).notNull(),
   },
-  (t) => [index("task_presence_task_id_idx").on(t.taskId)],
+  (t) => [
+    index("task_presence_task_id_idx").on(t.taskId),
+    index("task_presence_organization_id_idx").on(t.organizationId),
+  ],
 );
 
 /** Iemand die de taak volgt en meldingen over de taak wil ontvangen. */

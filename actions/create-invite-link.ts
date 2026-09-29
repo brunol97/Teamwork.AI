@@ -9,7 +9,7 @@ import {
 
 export default defineAction({
   description:
-    "Create an invitation link (uitnodigingslink) for a task in the current organization and return the existing links of that task. A beheerder shares the link; the second person becomes a member of the organization without a choice screen. Revoke a link with revoke-invite-link.",
+    "Create an invitation link (uitnodigingslink) for a task in the current organization and return the existing links of that task. A beheerder shares the link; the second person becomes a member of the organization without a choice screen. With invitedEmail the app also creates a pending organization invitation for that address, so accepting the link really makes them a member; without an email the link only works for people the organization already knows. Revoke a link with revoke-invite-link.",
   schema: z.object({
     taskId: z.string().min(1).describe("Task id"),
     expiresInHours: z
@@ -23,7 +23,9 @@ export default defineAction({
       .string()
       .email()
       .optional()
-      .describe("Optional email of the invited person, only kept as a note"),
+      .describe(
+        "Email of the invited person. Required for a visitor the organization does not know yet: it creates the pending organization invitation that makes accepting the link grant membership.",
+      ),
   }),
   run: async ({ taskId, expiresInHours, invitedEmail }, ctx) => {
     const orgId = ctx?.orgId;
@@ -53,6 +55,11 @@ export default defineAction({
       fail("Task not found.", { errorCode: "not_found", statusCode: 404 });
     }
 
-    return { invite, links: await listTaskInvites(taskId, orgId) };
+    return {
+      invite,
+      /** Of de framework-uitnodiging voor `invitedEmail` is aangemaakt. */
+      orgInvitation: invite.orgInvitation,
+      links: await listTaskInvites(taskId, orgId),
+    };
   },
 });

@@ -27,11 +27,13 @@ describe("aanwezigheid in een taak", () => {
 
     await touchTaskPresence({
       taskId: task.id,
+      organizationId: "org-aanwezigheid",
       userId: "beheerder@example.com",
       clientId,
     });
     await touchTaskPresence({
       taskId: task.id,
+      organizationId: "org-aanwezigheid",
       userId: "tweede@example.com",
       clientId: clientId2,
     });
@@ -51,11 +53,13 @@ describe("aanwezigheid in een taak", () => {
 
     await touchTaskPresence({
       taskId: task.id,
+      organizationId: "org-aanwezigheid",
       userId: "beheerder@example.com",
       clientId,
     });
     await touchTaskPresence({
       taskId: task.id,
+      organizationId: "org-aanwezigheid",
       userId: "beheerder@example.com",
       clientId: clientId2,
     });
@@ -70,12 +74,14 @@ describe("aanwezigheid in een taak", () => {
 
     await touchTaskPresence({
       taskId: task.id,
+      organizationId: "org-aanwezigheid",
       userId: "beheerder@example.com",
       clientId,
     });
     const later = Date.now() + 1000;
     await touchTaskPresence({
       taskId: task.id,
+      organizationId: "org-aanwezigheid",
       userId: "beheerder@example.com",
       clientId,
     });
@@ -89,6 +95,7 @@ describe("aanwezigheid in een taak", () => {
     const clientId = randomUUID();
     await touchTaskPresence({
       taskId: task.id,
+      organizationId: "org-aanwezigheid",
       userId: "beheerder@example.com",
       clientId,
     });
@@ -102,11 +109,12 @@ describe("aanwezigheid in een taak", () => {
     const clientId = randomUUID();
     await touchTaskPresence({
       taskId: task.id,
+      organizationId: "org-aanwezigheid",
       userId: "beheerder@example.com",
       clientId,
     });
 
-    await clearTaskPresence(clientId);
+    await clearTaskPresence(clientId, "org-aanwezigheid");
 
     expect(await listActivePresence(task.id, "org-aanwezigheid")).toEqual([]);
   });
@@ -116,10 +124,32 @@ describe("aanwezigheid in een taak", () => {
     const clientId = randomUUID();
     await touchTaskPresence({
       taskId: task.id,
+      organizationId: "org-aanwezigheid",
       userId: "beheerder@example.com",
       clientId,
     });
 
     expect(await listActivePresence(task.id, "org-andere")).toEqual([]);
+  });
+
+  it("laat een client uit een andere organisatie staan", async () => {
+    const task = await createTaak("org-aanwezigheid");
+    const otherTask = await createTaak("org-andere");
+    const clientId = randomUUID();
+
+    await touchTaskPresence({
+      taskId: task.id,
+      organizationId: "org-aanwezigheid",
+      userId: "beheerder@example.com",
+      clientId,
+    });
+
+    // Een gebruiker uit een andere organisatie mag dezelfde clientId niet
+    // kunnen wissen: het clientId alleen is geen bewijs van eigendom.
+    await clearTaskPresence(clientId, "org-andere");
+
+    expect((await listActivePresence(task.id, "org-aanwezigheid")).map((p) => p.userId)).toEqual([
+      "beheerder@example.com",
+    ]);
   });
 });

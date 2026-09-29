@@ -1,4 +1,5 @@
 import { and, desc, eq } from "@agent-native/core/db/schema";
+import { invalidateMemberOrgCaches, orgInvitations } from "@agent-native/core/org";
 import { randomBytes, randomUUID } from "node:crypto";
 
 import { getDb } from "../db/client.js";
@@ -26,6 +27,8 @@ export interface TaskInvite {
   acceptedAt: number | null;
   revokedAt: number | null;
   createdAt: number;
+  /** De openstaande framework-uitnodiging die bij `invitedEmail` hoort. */
+  orgInvitation: OrgInvitationResult;
 }
 
 export interface CreateTaskInviteInput {
@@ -34,6 +37,13 @@ export interface CreateTaskInviteInput {
   createdBy: string;
   invitedEmail?: string | null;
   expiresInHours?: number;
+}
+
+export interface OrgInvitationResult {
+  /** `aangemaakt`, `reeds_open` of null: geen e-mailadres meegegeven. */
+  status: "aangemaakt" | "reeds_open" | null;
+  email: string | null;
+  invitationId: string | null;
 }
 
 export interface InviteLinkPreview {
@@ -75,6 +85,60 @@ function meldingVoorState(state: InviteLinkState): string {
   return "";
 }
 
+/**
+ * Maakt de openstaande uitnodiging van het framework zelf aan, zodat
+ * `acceptPendingInvitationsForEmail` de bezoeker echt lid maakt. De app
+ * schrijft hiermee alleen een uitnodiging, geen lidmaatschap: de ledenlijst
+ * blijft van het framework. Bij een reeds openstaande uitnodiging wordt die
+ * hergebruikt, zodat een tweede link voor hetzelfde adres geen 409 geeft.
+ */
+export async function createPendingOrgInvitation({
+  orgId,
+  email,
+  invitedBy,
+}: {
+  orgId: string;
+  email: string;
+  invitedBy: string;
+}): Promise<OrgInvitationResult> {
+  const normalized = email.trim().toLowerCase();
+  const db = getDb();
+  const now = Date.now();
+
+  const existing = await db
+    .select({ id: orgInvitations.id })
+    .from(orgInvitations)
+    .where(
+      and(
+        eq(orgInvitations.orgId, orgId),
+        eq(orgInvitations.status, "pending"),
+        eq(orgInvitations.email, normalized),
+      ),
+    )
+    .limit(1);
+
+  if (existing[0]) {
+    return { status: "reeds_open", email: normalized, invitationId: existing[0].id };
+  }
+
+  const id = randomUUID();
+  await db.insert(orgInvitations).values({
+    id,
+    orgId,
+    email: normalized,
+    invitedBy,
+    createdAt: now,
+    status: "pending",
+    role: "member",
+    appRolesJson: null,
+  });
+  // Het framework cachet de leden per e-mailadres; een nieuwe uitnodiging moet
+  // die cache niet laten hangen op de vorige stand.
+  invalidateMemberOrgCaches();
+
+  return { status: "aangemaakt", email: normalized, invitationId: id };
+}
+
 /** Maakt een uitnodigingslink voor één taak aan. */
 export async function createTaskInvite({
   orgId,
@@ -90,6 +154,9 @@ export async function createTaskInvite({
 
   const db = getDb();
   const now = Date.now();
+  const orgInvitation = invitedEmail
+    ? await createPendingOrgInvitation({ orgId, email: invitedEmail, invitedBy: createdBy })
+    : { status: null, email: null, invitationId: null };
   const invite: TaskInvite = {
     id: randomUUID(),
     organizationId: orgId,
@@ -102,15 +169,32 @@ export async function createTaskInvite({
     acceptedAt: null,
     revokedAt: null,
     createdAt: now,
+    orgInvitation,
   };
 
-  await db.insert(taskInvites).values(invite);
+  await db.insert(taskInvites).values({
+    id: invite.id,
+    organizationId: invite.organizationId,
+    taskId: invite.taskId,
+    token: invite.token,
+    invitedEmail: invite.invitedEmail,
+    status: invite.status,
+    createdBy: invite.createdBy,
+    expiresAt: invite.expiresAt,
+    acceptedAt: invite.acceptedAt,
+    revokedAt: invite.revokedAt,
+    createdAt: invite.createdAt,
+  });
   return invite;
 }
 
 /** Drizzle leest de status als string; de store houdt de twee waarden vast. */
 function toTaskInvite(row: InviteRow): TaskInvite {
-  return { ...row, status: row.status as InviteLinkStatus };
+  return {
+    ...row,
+    status: row.status as InviteLinkStatus,
+    orgInvitation: { status: null, email: null, invitationId: null },
+  };
 }
 
 /**
@@ -173,7 +257,35 @@ export async function revokeTaskInvite(
     .where(and(eq(taskInvites.id, inviteId), eq(taskInvites.organizationId, orgId)))
     .returning();
 
-  return rows[0] ? toTaskInvite(rows[0]) : undefined;
+  const invite = rows[0] ? toTaskInvite(rows[0]) : undefined;
+  if (invite) {
+    await revokePendingOrgInvitation(invite);
+  }
+  return invite;
+}
+
+/**
+ * Haalt de bijbehorende openstaande framework-uitnodiging weg. Een ingetrokken
+ * link mag geen toegang geven, en een uitnodiging die blijft staan zou de
+ * bezoeker alsnog lid maken via het framework.
+ */
+async function revokePendingOrgInvitation(invite: TaskInvite): Promise<void> {
+  const email = invite.orgInvitation.email ?? invite.invitedEmail;
+  if (!email) {
+    return;
+  }
+
+  await getDb()
+    .update(orgInvitations)
+    .set({ status: "revoked" })
+    .where(
+      and(
+        eq(orgInvitations.orgId, invite.organizationId),
+        eq(orgInvitations.status, "pending"),
+        eq(orgInvitations.email, email.trim().toLowerCase()),
+      ),
+    );
+  invalidateMemberOrgCaches();
 }
 
 /** Geeft alle links van een taak terug, nieuwste eerst. */

@@ -2,6 +2,7 @@ import { useActionMutation, useActionQuery } from "@agent-native/core/client/hoo
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 
+import { userFacingActionError } from "@/lib/action-error";
 import { APP_TITLE } from "@/lib/app-config";
 
 export function meta() {
@@ -41,7 +42,13 @@ export default function InviteLinkRoute() {
       { token: token ?? "" },
       {
         onSuccess: (result) => navigate(result.redirect),
-        onError: (error) => setFoutmelding(error.message),
+        onError: (error) =>
+          setFoutmelding(
+            userFacingActionError(
+              error,
+              "Je kon niet binnengaan met deze uitnodigingslink. Vraag de beheerder om een nieuwe link.",
+            ),
+          ),
       },
     );
   }, [preview?.state, token]);

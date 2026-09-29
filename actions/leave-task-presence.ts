@@ -13,14 +13,17 @@ export default defineAction({
       .describe("Id of this tab or device, the same one used for set-task-presence"),
   }),
   run: async ({ clientId }, ctx) => {
-    if (!ctx?.orgId || !ctx?.userEmail) {
+    const orgId = ctx?.orgId;
+    if (!orgId || !ctx?.userEmail) {
       fail("You must be signed in and belong to an organization.", {
         errorCode: "unauthenticated",
         statusCode: 401,
       });
     }
 
-    await clearTaskPresence(clientId);
+    // Alleen binnen de eigen organisatie: een clientId van een andere
+    // organisatie is niet van deze aanroeper om te wissen.
+    await clearTaskPresence(clientId, orgId);
     return { clientId };
   },
 });
