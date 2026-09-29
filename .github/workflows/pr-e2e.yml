@@ -60,6 +60,7 @@ jobs:
           cat e2e-selection.json
 
       - name: Run the selected E2E specs with recording
+        id: run-tests
         run: |
           SPECS=$(python3 -c "import json;print(' '.join(json.load(open('e2e-selection.json'))['specs']))")
           echo "Running: $SPECS"
@@ -79,6 +80,12 @@ jobs:
       - name: Post recording link on the PR
         if: always()
         uses: actions/github-script@v7
+        env:
+          # Read the outcome from the step instead of the Actions API. The
+          # github-script client in this action does not expose
+          # github.rest.actions.listJobs, and calling it aborted the step before
+          # the comment was ever posted, even though the recording uploaded fine.
+          TEST_OUTCOME: ${{ steps.run-tests.outcome }}
         with:
           script: |
             const fs = require('fs');
@@ -88,12 +95,9 @@ jobs:
             const prNumber = context.payload.pull_request.number;
             const headSha = context.payload.pull_request.head.sha.slice(0, 7);
 
-            const { data: runs } = await github.rest.actions.listJobs({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              run_id: context.runId,
-            });
-            const failed = (runs.jobs || []).some((job) => job.conclusion && job.conclusion !== 'success');
+            // 'skipped' happens when the spec selection or install step failed.
+            const outcome = process.env.TEST_OUTCOME || 'unknown';
+            const failed = outcome === 'failure' || outcome === 'skipped';
             const artifact = `e2e-pr-${prNumber}-${context.payload.pull_request.head.sha}`;
 
             const body = [
