@@ -16,6 +16,9 @@ const LIVE_BUDGET_MS = 2500;
 /** Opwarmen van een koude dev-server, geen onderdeel van het gedrag. */
 const WARMUP_MS = 20_000;
 
+/** De PresenceBar stuurt elke 5s een hartslag; dit is dat interval uit `PresenceBar`. */
+const HEARTBEAT_MS = 5000;
+
 /** De PresenceBar leest elke seconde opnieuw; dit is dat interval uit `PresenceBar`. */
 const PRESENCE_POLL_MS = 1000;
 
@@ -129,10 +132,15 @@ test("T3: tweede persoon komt binnen via een uitnodigingslink en werkt mee", asy
   await expect(page.getByTestId("aanwezig-aantal")).toHaveText("1 persoon aanwezig", {
     timeout: WARMUP_MS,
   });
-  // De aanwezigheidspoll loopt elke seconde. De eerste poll na het opwarmen
-  // is nog koud (dev-server, route nog niet gecompileerd), dus die telt niet
-  // mee in de budgetmeting: geef de poll twee intervallen om op gang te komen.
-  await page.waitForTimeout(2 * PRESENCE_POLL_MS);
+  // De aanwezigheidspoll loopt elke seconde, maar de eigen hartslag elke vijf
+  // seconden. Bij het binnenstappen ruimt het vorige tabblad zijn rij nog op en
+  // die kan na de eerste poll binnenkomen; de rij komt dan pas bij de volgende
+  // hartslag terug. Wacht daarom een hele hartslag-periode plus een poll, zodat
+  // de telling stabiel staat voor de meting. Dit is opwarmen, geen gedrag.
+  await page.waitForTimeout(HEARTBEAT_MS + PRESENCE_POLL_MS);
+  await expect(page.getByTestId("aanwezig-aantal")).toHaveText("1 persoon aanwezig", {
+    timeout: WARMUP_MS,
+  });
 
   // The second person opens the same task. The first person sees that presence
   // within about a second.
