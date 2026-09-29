@@ -153,6 +153,40 @@ export const taskNotifications = table(
   ],
 );
 
+/**
+ * Human task: een verzoek van de agent aan een specifieke persoon dat een antwoord
+ * vereist, waardoor de taak pauzeert. De drie velden `question` (wat), `reason`
+ * (waarom) en `options` zijn alle drie verplicht; een vraag zonder waarom is geen
+ * bruikbare vraag. De rij is de duurzame wachtstatus van de agent: na een herstart
+ * van de server leest `answer-human-task` deze rij om verder te gaan.
+ */
+export const humanTasks = table(
+  "human_tasks",
+  {
+    id: text("id").primaryKey(),
+    taskId: text("task_id").notNull(),
+    organizationId: text("organization_id").notNull(),
+    /** Aan wie de agent de vraag stelt. */
+    askedUserId: text("asked_user_id").notNull(),
+    /** Wat de agent wil. */
+    question: text("question").notNull(),
+    /** Waarom de agent het antwoord nodig heeft. */
+    reason: text("reason").notNull(),
+    /** De opties waaruit de persoon kiest, als JSON-array van strings. */
+    options: text("options").notNull(),
+    status: text("status").notNull().default("open"),
+    answer: text("answer"),
+    answeredAt: bigint("answered_at", { mode: "number" }),
+    createdAt: bigint("created_at", { mode: "number" }).notNull(),
+    updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
+  },
+  (t) => [
+    index("human_tasks_task_id_idx").on(t.taskId),
+    index("human_tasks_organization_id_idx").on(t.organizationId),
+    index("human_tasks_asked_user_id_idx").on(t.askedUserId),
+  ],
+);
+
 export const taskEvents = table(
   "task_events",
   {

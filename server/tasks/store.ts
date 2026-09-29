@@ -137,6 +137,29 @@ export async function getTask(
   return rows[0];
 }
 
+/**
+ * Zet de status van een taak, bijvoorbeeld "wacht op iemand" zolang er een
+ * openstaande vraag is. De status staat in SQL, dus hij overleeft een herstart.
+ */
+export async function setTaskStatus(
+  taskId: string,
+  orgId: string,
+  status: string,
+): Promise<boolean> {
+  const task = await getTask(taskId, orgId);
+  if (!task) {
+    return false;
+  }
+
+  const db = getDb();
+  await db
+    .update(tasks)
+    .set({ status, updatedAt: Date.now() })
+    .where(eq(tasks.id, taskId));
+
+  return true;
+}
+
 export async function createTaskEvent(
   taskId: string,
   actorType: "user" | "agent" | "system",

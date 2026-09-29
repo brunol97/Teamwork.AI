@@ -36,6 +36,9 @@ Single-context repo: one `CONTEXT.md` at the repo root and system-wide ADRs in `
 | `get-task-following` | Task page wants to show the follow button | `taskId` | `{ taskId, following }` |
 | `list-meldingen` | Someone wants to see their meldingen | — | `{ meldingen, ongelezen }` |
 | `mark-meldingen-read` | Someone read their meldingen | `taskId` (optional) | `{ gelezen }` |
+| `ask-human-task` | Agent asks a person a decision question and the task waits | `taskId`, `askedUserId`, `question`, `reason`, `options` | `{ taskId, asked, knownAnswer, humanTask }`; `asked` is `false` when the answer was already found |
+| `answer-human-task` | The asked person answers and the agent resumes | `id`, `answer` | `{ id, taskId, answer, taskStatus, agentMessage }` |
+| `list-human-tasks` | "Wacht op jou": the open questions for this person | — | `{ humanTasks }` |
 | `view-screen` | Read the current UI navigation/selection | — | `navigation` state |
 | `navigate` | Open a route in the UI | `path` | — |
 
@@ -49,6 +52,14 @@ Task actions are scoped to the caller's organization. A user from another organi
 - **Aanwezigheid**: the task page sends a heartbeat every few seconds (`set-task-presence`, one row per tab or device) and shows who else is looking. Clients disappear 15 seconds after the last heartbeat. Elke rij draagt zijn `organizationId`; `leave-task-presence` wist alleen binnen de eigen organisatie, zodat een bekende `clientId` geen aanwezigheid van een andere organisatie kan wissen.
 - **Volgen**: `follow-task` makes someone a volger; every agent reply in `send-task-message` then reaches the followers as a melding (`list-meldingen`, `mark-meldingen-read`).
 - Presence, messages and meldingen travel between people through the framework's sync (`useDbSync` in `app/root.tsx`), so the other person sees a change within about a second.
+
+## Human task (agent vraagt een beslissing)
+
+- A **human task** is a request from the agent to a specific person that needs an answer, so the task pauses. The agent calls `ask-human-task` with three required fields: what it wants (`question`), why it needs the answer (`reason`) and at least two `options`. A question with an empty "waarom" is refused.
+- **Eerst zoeken, dan vragen.** `ask-human-task` searches the werkdocument of the task and earlier answered questions in the same project before it asks. When the answer is already there it returns `asked: false` with the `knownAnswer` (option, source and a snippet) and creates nothing.
+- The open question appears in the person's **"Wacht op jou"** list (`list-human-tasks`, shown in the task page) and as a melding. It shows all three fields.
+- **The waiting state lives in SQL.** The task status is `wacht op iemand` while an open question exists, and the question itself is a row in `human_tasks`. After a restart of the server, `answer-human-task` picks up that row and the agent continues from the stored question, options and answer. Nothing is kept in process memory.
+- Answering logs `human_task_answered` in the activity log, puts the task back on `bezig`, and lets the agent write its follow-up as a normal agent message.
 
 ## Werkdocument
 
