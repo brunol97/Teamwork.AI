@@ -3,5 +3,6 @@
     "enabled": true,
     "reserveTokens": 16384,
     "keepRecentTokens": 40000
-  }
+  },
+  "packages": ["pi-subagents"]
 }
