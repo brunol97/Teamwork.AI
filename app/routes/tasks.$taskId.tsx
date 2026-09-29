@@ -1,11 +1,14 @@
-import { useActionMutation, useActionQuery } from "@agent-native/core/client/hooks";
+import {
+  actionErrorMessage,
+  useActionMutation,
+  useActionQuery,
+} from "@agent-native/core/client/hooks";
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { userFacingActionError } from "@/lib/action-error";
 import {
   insertDocumentBlock,
   type DocumentBlockKind,
@@ -105,11 +108,11 @@ export default function TaskDetailRoute() {
           setVersion(document.version);
         },
         onError: (error) => {
+          // `error.message` bevat intern detail ("Action x failed: ..."), dus
+          // tonen we de melding die de action zelf schreef en loggen we de rest.
+          console.error("opslaan van het werkdocument mislukt:", error);
           setConflict(
-            userFacingActionError(
-              error,
-              "Opslaan mislukt. Probeer het opnieuw.",
-            ),
+            actionErrorMessage(error) ?? "Opslaan mislukt. Probeer het opnieuw.",
           );
         },
       },
