@@ -16,7 +16,7 @@ process.env.DATABASE_URL = `pglite:./data/pglite-test-${worker}`;
 await withMigrationRuntime(async () => {
   await runFrameworkReleaseMigrations(null);
   const migrationPlugin = runDrizzleMigrations("./server/db/migrations", {
-    table: "agent_office_migrations",
+    table: "agent_office_app_migrations",
   });
   await migrationPlugin({} as any);
 });
