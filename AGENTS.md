@@ -23,6 +23,11 @@ Single-context repo: one `CONTEXT.md` at the repo root and system-wide ADRs in `
 | `get-work-document` | User or agent reads the werkdocument of a task | `taskId` | `{ taskId, markdown, version, updatedAt }` |
 | `update-work-document` | User rewrites the whole werkdocument | `taskId`, `markdown`, `expectedVersion` | `{ taskId, markdown, version, updatedAt }`; a stale `expectedVersion` fails with a `conflict` |
 | `add-work-document-section` | Agent appends a section to the werkdocument | `taskId`, `title`, `body` | `{ taskId, sectionTitle, markdown }` |
+| `list-tracer-slices` | User or agent reads the tracer-slices of a task | `taskId` | `{ taskId, slices }` in document order; each slice carries titel, doel, gedrag, acceptatiecriteria, requirements-verwijzingen, buiten deze slice, afhankelijkheden and testaanpak |
+| `export-tracer-slice` | User exports one slice as a markdown file | `taskId`, `sliceId` | `{ taskId, sliceId, fileName, markdown }`; the export is self-contained |
+| `reorder-tracer-slices` | User puts the slices in a new order | `taskId`, `orderedIds` | `{ taskId, slices }` in the new order; the order is persisted |
+| `merge-tracer-slices` | User merges a slice with the next one | `taskId`, `sliceId` | `{ taskId, slices }` with the merged slice |
+| `split-tracer-slice` | User splits a slice between two criteria | `taskId`, `sliceId`, `afterCriteria` | `{ taskId, slices }` with the two new slices |
 | `create-invite-link` | Beheerder wants to invite a second person to a task | `taskId`, `expiresInHours`, `invitedEmail` | `{ invite, orgInvitation, links }` with the token of the link |
 | `list-invite-links` | Beheerder wants to see the links of a task | `taskId` | `{ links }` with state `geldig`, `verlopen` or `ingetrokken` |
 | `revoke-invite-link` | Beheerder wants to withdraw a link | `inviteId` | `{ invite }` |
@@ -82,6 +87,13 @@ Task actions are scoped to the caller's organization. A user from another organi
 - The user asks for a section in the task chat ("Schrijf een sectie over datamigratie"). `send-task-message` then adds the agent's answer as a section and logs it.
 - Document changes are logged in the activity log as `document_changed` (the lead rewrote the document) and `document_section_added` (a section was appended, with the section title as data). The document write and its log entry happen in one transaction, so a change is never saved without its entry in the log.
 - Concurrent edits are protected with a version check: every write increments `work_documents.version`, and a write that passes a stale `expectedVersion` is refused with a `conflict`. The second editor keeps their text and gets a Dutch message with a `Herladen` button, so no work is lost silently. The agent, which does not read a version first, retries the write itself.
+
+## Tracer-slices
+
+- **Tracer-slices are a section of the werkdocument, not a separate table.** The section `## Tracer-slices` holds one sub-section per slice (`### Slice 1: titel`) with the fixed template: titel, doel, gedrag, acceptatiecriteria, requirements-verwijzingen, buiten deze slice, afhankelijkheden and testaanpak. Every slice must reference only requirements that exist as headings in the werkdocument.
+- **The slice planner is agent behavior in the task chat.** A message like "Maak tracer-slices" makes `send-task-message` answer with slices in the fixed template and write them as the Tracer-slices section (`document_section_added`, data `Tracer-slices`). Slices that miss a field or reference an unknown requirement are dropped; if nothing usable remains, the planner falls back to one slice per requirement heading in the werkdocument, so the planning always comes from the eisen that are there.
+- **Ordenen, samenvoegen en splitsen rewrite the section.** `reorder-tracer-slices` takes the slice ids in the wanted order, `merge-tracer-slices` merges a slice with the next one, and `split-tracer-slice` splits a slice between two acceptatiecriteria (`afterCriteria`). Each write goes through the werkdocument store, so the new order is persisted, the version check applies, and the activity log records `slices_reordered`, `slices_merged` or `slice_split`.
+- **Export is a rendering of one slice.** `export-tracer-slice` returns a markdown file that stands on its own: taak and project name, all template fields, and the full text of every referenced requirement. The task page downloads it under the returned `fileName`.
 
 ## Agent behavior
 
