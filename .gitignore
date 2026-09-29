@@ -45,5 +45,6 @@ data/*.lock
 .env*
 
 test-results/
+playwright-report/
 /tmp/dev*.log
 /tmp/dev*.pid
