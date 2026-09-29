@@ -6,10 +6,16 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
-  reporter: "list",
+  reporter: [["list"], ["html", { open: "never" }]],
+  outputDir: "./test-results",
   use: {
     baseURL: process.env.BASE_URL ?? "http://localhost:8080",
+    // Keep a trace of the first retry so a flaky failure can be inspected.
     trace: "on-first-retry",
+    // Record video for every run, not just failures, so a reviewer can watch the
+    // flow without re-running it. Recordings are uploaded by .github/workflows/pr-e2e.yml.
+    video: { mode: "on", size: { width: 1280, height: 720 } },
+    screenshot: "only-on-failure",
   },
   projects: [
     {
