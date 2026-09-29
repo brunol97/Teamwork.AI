@@ -101,7 +101,8 @@ export async function saveWorkDocument({
   return writeWorkDocument({
     taskId,
     orgId,
-    markdown,
+    // De beheerder vervangt het hele document, dus de gewenste tekst staat vast.
+    change: () => markdown,
     actorType,
     actorId,
     eventType: "document_changed",
@@ -119,26 +120,57 @@ export async function addWorkDocumentSection({
   actorType,
   actorId,
 }: AddSectionInput): Promise<WorkDocument | undefined> {
-  const current = await getWorkDocument(taskId, orgId);
-  if (!current) {
-    return undefined;
-  }
-
-  return writeWorkDocument({
+  return applyWorkDocumentChange({
     taskId,
     orgId,
-    markdown: appendSection(current.markdown, title, body),
     actorType,
     actorId,
     eventType: "document_section_added",
     eventData: title,
+    // Een mutatie, geen vooraf berekende string: bij een botsing wordt de
+    // append opnieuw toegepast op de markdown van dat moment, zodat een
+    // menselijke save ertussen niet verdwijnt.
+    change: (current) => appendSection(current, title, body),
+  });
+}
+
+/**
+ * Past `change` toe op de huidige markdown van het werkdocument en logt de
+ * wijziging. `change` is een functie zodat een mislukte poging opnieuw kan
+ * worden toegepast op de markdown die er dan staat.
+ */
+export async function applyWorkDocumentChange({
+  taskId,
+  orgId,
+  actorType,
+  actorId,
+  eventType,
+  eventData,
+  change,
+}: {
+  taskId: string;
+  orgId: string;
+  actorType: ActorType;
+  actorId: string;
+  eventType: string;
+  eventData: string | null;
+  change: (current: string) => string | Promise<string>;
+}): Promise<WorkDocument | undefined> {
+  return writeWorkDocument({
+    taskId,
+    orgId,
+    change,
+    actorType,
+    actorId,
+    eventType,
+    eventData,
   });
 }
 
 async function writeWorkDocument({
   taskId,
   orgId,
-  markdown,
+  change,
   actorType,
   actorId,
   eventType,
@@ -147,7 +179,7 @@ async function writeWorkDocument({
 }: {
   taskId: string;
   orgId: string;
-  markdown: string;
+  change: (current: string) => string | Promise<string>;
   actorType: ActorType;
   actorId: string;
   eventType: string;
@@ -164,11 +196,11 @@ async function writeWorkDocument({
   // Het werkdocument en de activity-log entry horen bij elkaar: zonder de entry
   // is de wijziging niet gelogd en dus onvindbaar. Eén transactie, dus een
   // mislukte event insert maakt de markdown-schrijfactie ongedaan.
-  const version = await getDb().transaction(async (tx) => {
+  const written = await getDb().transaction(async (tx) => {
     const written = await writeContentWithVersionCheck({
       db: tx,
       taskId,
-      markdown,
+      change,
       now,
       expectedVersion,
     });
@@ -176,33 +208,37 @@ async function writeWorkDocument({
     return written;
   });
 
-  return { taskId, markdown, version, updatedAt: now };
+  const writtenMarkdown = written.markdown;
+  return { taskId, markdown: writtenMarkdown, version: written.version, updatedAt: now };
 }
 
 /**
  * Schrijft de markdown weg met een check-and-set op de versie. Zonder
  * `expectedVersion` wordt de actuele versie opgehaald en het schrijven een
  * paar keer herhaald, zodat twee gelijktijdige aanpassingen elkaar niet
- * overschrijven.
+ * overschrijven. Elke poging leest de markdown opnieuw en past `change` daar
+ * opnieuw op toe: een append die met een menselijke save botst herhaalt zich
+ * dus tegen de tekst van die save, niet tegen de tekst van vóór de save.
  */
 async function writeContentWithVersionCheck({
   db,
   taskId,
-  markdown,
+  change,
   now,
   expectedVersion,
 }: {
   db: DbTransaction;
   taskId: string;
-  markdown: string;
+  change: (current: string) => string | Promise<string>;
   now: number;
   expectedVersion?: number;
-}): Promise<number> {
+}): Promise<{ markdown: string; version: number }> {
   const attempts = expectedVersion === undefined ? 5 : 1;
 
   for (let attempt = 0; attempt < attempts; attempt++) {
-    const targetVersion =
-      expectedVersion === undefined ? ((await readVersion(db, taskId)) ?? 0) : expectedVersion;
+    const current = await readDocument(db, taskId);
+    const targetVersion = expectedVersion ?? current?.version ?? 0;
+    const markdown = await change(current?.markdown ?? "");
 
     // Maak het werkdocument aan als de taak nog geen werkdocument heeft.
     const inserted = await db
@@ -219,7 +255,7 @@ async function writeContentWithVersionCheck({
       .returning({ version: workDocuments.version });
 
     if (inserted.length > 0) {
-      return inserted[0].version;
+      return { markdown, version: inserted[0].version };
     }
 
     const updated = await db
@@ -233,20 +269,23 @@ async function writeContentWithVersionCheck({
       .returning({ version: workDocuments.version });
 
     if (updated.length > 0) {
-      return updated[0].version;
+      return { markdown, version: updated[0].version };
     }
   }
 
-  const currentVersion = (await readVersion(db, taskId)) ?? 0;
+  const currentVersion = (await readDocument(db, taskId))?.version ?? 0;
   throw new WorkDocumentConflictError(currentVersion);
 }
 
-async function readVersion(db: DbTransaction, taskId: string): Promise<number | undefined> {
+async function readDocument(
+  db: DbTransaction,
+  taskId: string,
+): Promise<{ markdown: string; version: number } | undefined> {
   const rows = await db
-    .select({ version: workDocuments.version })
+    .select({ markdown: workDocuments.markdown, version: workDocuments.version })
     .from(workDocuments)
     .where(eq(workDocuments.taskId, taskId))
     .limit(1);
 
-  return rows[0]?.version;
+  return rows[0];
 }

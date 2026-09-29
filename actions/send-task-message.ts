@@ -2,7 +2,10 @@ import { defineAction, fail } from "@agent-native/core/action";
 import { z } from "zod";
 
 import { parseSectionRequest } from "../server/documents/markdown.js";
-import { addWorkDocumentSection } from "../server/documents/store.js";
+import {
+  addWorkDocumentSection,
+  WorkDocumentConflictError,
+} from "../server/documents/store.js";
 import { notifyTaskFollowers } from "../server/collaboration/notifications.js";
 import { generateOllamaResponse } from "../server/llm/ollama.js";
 import {
@@ -64,15 +67,30 @@ export default defineAction({
     const sectionRequest = parseSectionRequest(message);
     let documentSection: { title: string } | null = null;
     if (sectionRequest) {
-      await addWorkDocumentSection({
-        taskId,
-        orgId,
-        title: sectionRequest.title,
-        body: response,
-        actorType: "agent",
-        actorId: "ollama",
-      });
-      documentSection = { title: sectionRequest.title };
+      // De agent schrijft zijn sectie zonder versie mee te geven en probeert
+      // het opnieuw bij een conflict. Lukt het na die pogingen niet, dan is dat
+      // geen 500 maar een conflict: het antwoord van de agent staat al in de
+      // activity log en blijft daar staan.
+      try {
+        await addWorkDocumentSection({
+          taskId,
+          orgId,
+          title: sectionRequest.title,
+          body: response,
+          actorType: "agent",
+          actorId: "ollama",
+        });
+        documentSection = { title: sectionRequest.title };
+      } catch (error) {
+        if (!(error instanceof WorkDocumentConflictError)) {
+          throw error;
+        }
+        fail(error.message, {
+          errorCode: "conflict",
+          statusCode: 409,
+          details: { currentVersion: error.currentVersion },
+        });
+      }
     }
 
     return {

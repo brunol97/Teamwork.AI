@@ -8,10 +8,17 @@ test.setTimeout(120_000);
  * aanwezigheid rond de 850ms en het werkdocument en de melding ruim onder een
  * seconde, dus een echte regressie (bijvoorbeeld een poll die pas na vier
  * seconden herhaalt) valt hier op. De grens van 2,5 seconden geeft nog ruimte
- * voor een trage CI-run; de gemeten tijd staat in de uitvoer en in de
- * foutmelding.
+ * voor een trage CI-run.
+ *
+ * Het wachten op de UI zelf krijgt `WARMUP_MS`, niet deze grens: anders faalt de
+ * wacht eerst en blijft de meting onuitgevoerd. Zo draagt `expectWithinLiveBudget`
+ * de budgetcontrole en niet een toHaveText-timeout, en die meet echt de tijd
+ * tussen de schrijfactie en de zichtbare update.
  */
 const LIVE_BUDGET_MS = 2500;
+
+/** Wachttijd voor de UI; alleen een vangnet, de budgetcontrole is de meting. */
+const UI_WAIT_MS = 20_000;
 
 /** Opwarmen van een koude dev-server, geen onderdeel van het gedrag. */
 const WARMUP_MS = 20_000;
@@ -31,7 +38,29 @@ function expectWithinLiveBudget(label: string, startedAt: number) {
   return elapsed;
 }
 
-test("T3: tweede persoon komt binnen via een uitnodigingslink en werkt mee", async ({
+/**
+ * LET OP — wat deze test wel en niet bewijst.
+ *
+ * `playwright.config.ts` draait met `AUTH_DISABLED=true`, dus de "tweede
+ * persoon" in deze test is hetzelfde account (`dev@local.test`) met een tweede
+ * clientId. Daardoor:
+ *
+ * - AC1 ("lid zonder keuzescherm") wordt hier NIET afgedekt: `accept-invite-link`
+ *   raakt altijd de `isOrgMember === true`-tak, want de bezoeker is al lid. Dat
+ *   pad is elders gedekt: `tests/collaboration/invite-membership.test.ts` geeft
+ *   een echte bezoeker een niet-lidmaatschap en bewijst dat accepteren wél lid
+ *   maakt, plus 403/410 voor ongeldige links.
+ * - De aanwezigheids- en meldings-ACs worden hier NIET als "twee mensen"
+ *   bewezen: het is één gebruiker met twee clientId's. Wat wél wordt bewezen is
+ *   dat een wijziging van een tweede client binnen de budgetgrens zichtbaar
+ *   wordt. Echte twee-gebruikers-gedrag is niet geautomatiseerd.
+ *
+ * De synctiming is hier wel echt getest: de gemeten tijd is de tijd tussen een
+ * schrijfactie en de zichtbare update, en `expectWithinLiveBudget` draagt de
+ * budgetcontrole (de toHaveText-wacht krijgt UI_WAIT_MS, zodat die niet vooraf
+ * faalt).
+ */
+test("T3: uitnodigingslink, gelijktijdige bewerking en live updates", async ({
   request,
   page,
 }) => {
@@ -149,7 +178,7 @@ test("T3: tweede persoon komt binnen via een uitnodigingslink en werkt mee", asy
     data: { taskId: task.id, clientId: "tweede-persoon" },
   });
   await expect(page.getByTestId("aanwezig-aantal")).toHaveText("2 personen aanwezig", {
-    timeout: LIVE_BUDGET_MS,
+    timeout: UI_WAIT_MS,
   });
   const aanwezigMs = expectWithinLiveBudget("aanwezigheid", sindsAanwezig);
   await expect(page.getByTestId("aanwezig-chip")).toHaveText("dev@local.test");
@@ -161,7 +190,7 @@ test("T3: tweede persoon komt binnen via een uitnodigingslink en werkt mee", asy
     data: { taskId: task.id, markdown: "# Eisen\n\n- Snel\n" },
   });
   await expect(page.getByLabel("Werkdocument in markdown")).toHaveValue(/# Eisen/, {
-    timeout: LIVE_BUDGET_MS,
+    timeout: UI_WAIT_MS,
   });
   const documentMs = expectWithinLiveBudget("werkdocument", sindsDocument);
 
@@ -210,10 +239,10 @@ test("T3: tweede persoon komt binnen via een uitnodigingslink en werkt mee", asy
     data: { taskId: task.id, message: "Kun je de eisen bekijken?" },
   });
   await expect(page.getByText("Kun je de eisen bekijken?")).toBeVisible({
-    timeout: LIVE_BUDGET_MS,
+    timeout: UI_WAIT_MS,
   });
   await expect(page.getByText("Antwoord van de agent in E2E Uitnodiging")).toBeVisible({
-    timeout: LIVE_BUDGET_MS,
+    timeout: UI_WAIT_MS,
   });
   const meldingMs = expectWithinLiveBudget("bericht en melding", sindsMelding);
   console.log(

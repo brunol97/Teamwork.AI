@@ -1,7 +1,10 @@
 import { defineAction, fail } from "@agent-native/core/action";
 import { z } from "zod";
 
-import { addWorkDocumentSection } from "../server/documents/store.js";
+import {
+  addWorkDocumentSection,
+  WorkDocumentConflictError,
+} from "../server/documents/store.js";
 
 export default defineAction({
   description:
@@ -31,6 +34,17 @@ export default defineAction({
       body,
       actorType: "agent",
       actorId: "ollama",
+    }).catch((error) => {
+      // Zonder deze mapping ontsnapt een conflict als een ongemapte 500, terwijl
+      // het een gewone situatie is: iemand anders schreef intussen.
+      if (error instanceof WorkDocumentConflictError) {
+        fail(error.message, {
+          errorCode: "conflict",
+          statusCode: 409,
+          details: { currentVersion: error.currentVersion },
+        });
+      }
+      throw error;
     });
     if (!document) {
       fail("Task not found.", {
