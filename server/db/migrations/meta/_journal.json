@@ -12,8 +12,15 @@
     {
       "idx": 1,
       "version": "7",
-      "when": 1790655441955,
-      "tag": "0001_chief_vargas",
+      "when": 1790626689374,
+      "tag": "0001_gray_the_fury",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790656722622,
+      "tag": "0002_fresh_bucky",
       "breakpoints": true
     }
   ]
