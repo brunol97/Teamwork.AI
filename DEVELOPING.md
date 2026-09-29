@@ -231,6 +231,8 @@ agentChat.submit("Generate something");
 
 Local development uses PGlite at `data/pglite`. For production and shared environments, set `DATABASE_URL` to a persistent hosted PostgreSQL database.
 
+Do not set `runtime.databasePoolMax` or `AGENT_NATIVE_DB_POOL_MAX`. The limit applies to each Vercel instance, and the framework default on serverless is 2 connections. The Supabase session pooler (port 5432) allows 15 clients in total, so a higher limit lets a few warm instances use all clients. Then every query fails with `EMAXCONNSESSION`. The transaction pooler (port 6543) shares its connections between instances and is the better `DATABASE_URL` for Vercel.
+
 Real credential values belong only in local `.env` files, deployment configuration, or registered secrets/settings UI. Never commit, document, log, return, paste, or include real keys, tokens, webhook URLs, signing secrets, or private data in examples; use empty values or obvious placeholders.
 
 When adding app data, define tables with `@agent-native/core/db/schema` helpers and use Drizzle's query builder for reads/writes. Keep SQL PostgreSQL-compatible and reserve raw SQL for additive migrations, health checks, or carefully scoped maintenance.
