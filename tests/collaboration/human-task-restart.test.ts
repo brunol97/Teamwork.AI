@@ -1,9 +1,7 @@
 import { and, eq } from "@agent-native/core/db/schema";
-import { randomUUID } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 
-const LEAD = "beheerder@example.com";
-const COLLEGA = "tweede@example.com";
+import { createSamenwerking, ctxVoor } from "./samenwerking.js";
 
 /**
  * De herstart-eis: de agent hervat vanuit SQL.
@@ -20,26 +18,20 @@ describe("de agent hervat na een herstart van de server", () => {
     process.env.AGENT_OFFICE_MOCK_LLM_RESPONSE =
       "Ik ga verder met Postgres voor de migratie.";
 
-    const { createTask, getTask } = await import("../../server/tasks/store.js");
-    const orgId = randomUUID();
-    const task = await createTask({
-      orgId,
-      leadId: LEAD,
-      projectName: "Project",
-      taskTitle: "Datamigratie",
-    });
+    const { getTask } = await import("../../server/tasks/store.js");
+    const { orgId, task, lead, collega } = await createSamenwerking();
 
     // Fase 1: de vraag stellen met de eerste set modules.
     const askAction = (await import("../../actions/ask-human-task.js")).default;
     const { humanTask } = await askAction.run(
       {
         taskId: task.id,
-        askedUserId: COLLEGA,
+        askedUserId: collega,
         question: "Welke database kiezen we?",
         reason: "De migratie moet weten waar de data naartoe gaat.",
         options: ["Postgres", "MongoDB"],
       },
-      { caller: "frontend", userEmail: LEAD, orgId } as any,
+      ctxVoor(orgId, lead),
     );
     expect(humanTask?.status).toBe("open");
     expect((await getTask(task.id, orgId))?.status).toBe("wacht op iemand");
@@ -64,14 +56,14 @@ describe("de agent hervat na een herstart van de server", () => {
     const tasksStore = await import("../../server/tasks/store.js");
 
     // De verse store ziet de openstaande vraag uitsluitend via de database.
-    const open = await store.listOpenHumanTasks(orgId, COLLEGA);
+    const open = await store.listOpenHumanTasks(orgId, collega);
     expect(open.map((item) => item.id)).toEqual([humanTask!.id]);
     expect(open[0].question).toBe("Welke database kiezen we?");
     expect(open[0].options).toEqual(["Postgres", "MongoDB"]);
 
     const result = await answerAction.run(
       { id: humanTask!.id, answer: "Postgres" },
-      { caller: "frontend", userEmail: COLLEGA, orgId } as any,
+      ctxVoor(orgId, collega),
     );
 
     expect(result.answer).toBe("Postgres");

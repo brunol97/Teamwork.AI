@@ -1,6 +1,9 @@
 import { getWorkDocument } from "../documents/store.js";
 import { getTask } from "../tasks/store.js";
-import { listAnsweredHumanTasksForProject, type HumanTask } from "./human-tasks.js";
+import {
+  listAnsweredHumanTasksForProject,
+  type HumanTask,
+} from "./human-tasks.js";
 
 /**
  * De agent zoekt vóór hij vraagt. Staat het antwoord al in het werkdocument van
@@ -90,25 +93,58 @@ function findOptionInText(
   };
 }
 
+/**
+ * Woorden die in vrijwel elke vraag voorkomen en dus nooit het onderwerp
+ * bepalen. Zonder deze lijst zouden twee vragen als "Voor welke databasis willen
+ * we een leesreplica?" en "Kies de databasis voor de migratie?" alleen door
+ * "welke" en "databasis" of "voor" en "databasis" op elkaar lijken.
+ */
+const WOORDEN_ZONDER_ONDERWERP = new Set([
+  "welke",
+  "welk",
+  "waarom",
+  "wanneer",
+  "voor",
+  "over",
+  "onder",
+  "tussen",
+  "moeten",
+  "zullen",
+  "willen",
+  "gaan",
+  "maken",
+]);
+
 /** Woorden van minimaal vier letters; korte woorden geven te veel toeval. */
 function significantWords(value: string): Set<string> {
   return new Set(
     normalizeText(value)
       .split(" ")
-      .filter((word) => word.length >= 4),
+      .filter(
+        (word) => word.length >= 4 && !WOORDEN_ZONDER_ONDERWERP.has(word),
+      ),
   );
 }
 
-/** Een eerdere vraag telt alleen mee als hij over hetzelfde onderwerp ging. */
+/**
+ * Een eerdere vraag telt alleen mee als hij over hetzelfde onderwerp ging. Eén
+ * gedeeld woord is daarvoor te weinig: "Welke databasis kiezen we voor de
+ * migratie?" en "Voor welke databasis willen we een leesreplica?" delen alleen
+ * het woord "databasis", en het antwoord over de migratie zou dan op een andere
+ * vraag worden toegepast. Twee of meer gedeelde woorden betekenen dat het om
+ * hetzelfde onderwerp gaat, en dan is hervragen overbodig.
+ */
+const MIN_GEDEELDE_WOORDEN = 2;
+
 function sameSubject(previousQuestion: string, question: string): boolean {
   const previous = significantWords(previousQuestion);
-  const current = significantWords(question);
-  for (const word of current) {
+  let gedeeld = 0;
+  for (const word of significantWords(question)) {
     if (previous.has(word)) {
-      return true;
+      gedeeld += 1;
     }
   }
-  return false;
+  return gedeeld >= MIN_GEDEELDE_WOORDEN;
 }
 
 export interface FindKnownAnswerInput {

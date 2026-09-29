@@ -177,6 +177,12 @@ export const humanTasks = table(
     status: text("status").notNull().default("open"),
     answer: text("answer"),
     answeredAt: bigint("answered_at", { mode: "number" }),
+    /**
+     * Wanneer de agent het antwoord heeft opgepakt. null betekent dat het
+     * antwoord wel bewaard is maar dat de hervat mislukte; die vraag staat dan
+     * in de lijst waarop de hervat opnieuw gestart kan worden.
+     */
+    resumedAt: bigint("resumed_at", { mode: "number" }),
     createdAt: bigint("created_at", { mode: "number" }).notNull(),
     updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
   },

@@ -1,6 +1,7 @@
 import { and, eq } from "@agent-native/core/db/schema";
-import { randomUUID } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
+
+import { createSamenwerking } from "./samenwerking.js";
 
 /**
  * De vraag en de wachtstatus zijn één handeling. Hier faalt de tweede
@@ -29,32 +30,23 @@ vi.mock("../../server/tasks/store.js", async (importOriginal) => {
   };
 });
 
-const LEAD = "beheerder@example.com";
-const COLLEGA = "tweede@example.com";
-
 describe("een mislukte status-schrijfactie laat geen halve vraag achter", () => {
   it("schrijft de vraag en de wachtstatus in één transactie", async () => {
-    const { createTask, getTask } = await import("../../server/tasks/store.js");
+    const { getTask } = await import("../../server/tasks/store.js");
     const { getDb } = await import("../../server/db/client.js");
     const { humanTasks } = await import("../../server/db/schema.js");
     const { createHumanTask } = await import(
       "../../server/collaboration/human-tasks.js"
     );
 
-    const orgId = randomUUID();
-    const task = await createTask({
-      orgId,
-      leadId: LEAD,
-      projectName: "Project",
-      taskTitle: "Datamigratie",
-    });
+    const { orgId, task, collega } = await createSamenwerking();
 
     statusSchrijfactie.faalt = true;
     await expect(
       createHumanTask({
         taskId: task.id,
         orgId,
-        askedUserId: COLLEGA,
+        askedUserId: collega,
         question: "Welke database kiezen we?",
         reason: "De migratie moet het weten.",
         options: ["Postgres", "MongoDB"],

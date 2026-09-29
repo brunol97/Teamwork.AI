@@ -32,3 +32,15 @@ export async function canInviteMembers(
 ): Promise<boolean> {
   return canInviteOrgMembers(await getOrgRole(orgId, email));
 }
+
+/**
+ * Of iemand lid is van de organisatie. Nodig voor alles wat een persoon iets
+ * vraagt: iemand die geen lid is, ziet de organisatie niet en kan dus nooit
+ * antwoorden. Dezelfde lookup als `getOrgRole`, want de rol is hier niet nodig.
+ */
+export async function isOrgMemberOf(
+  orgId: string,
+  email: string,
+): Promise<boolean> {
+  return (await getOrgRole(orgId, email)) !== null;
+}

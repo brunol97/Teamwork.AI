@@ -10,8 +10,10 @@ import { expect, test } from "@playwright/test";
  * - "De vraag verschijnt in Wacht op jou bij de gevraagde persoon, per e-mail"
  *   wordt NIET als twee mensen bewezen. Wat wél bewezen wordt: de vraag verschijnt
  *   in de lijst, zowel vanaf de takenlijst als op de taakpagina, en de velden
- *   zijn zichtbaar. De mailtransport zelf (Resend) wordt niet getest;
- *   `playwright.config.ts` heeft geen `RESEND_API_KEY`.
+ *   zijn zichtbaar. Ook de herinnering per e-mail wordt hier niet bewezen:
+ *   `playwright.config.ts` heeft geen `RESEND_API_KEY`, en het transport
+ *   onthoudt in de unit-tests alleen wat er verzonden zou zijn. Geen enkele
+ *   test stuurt een echte mail, dus niets beweest dat een mens hem ontvangt.
  * - "De vraag is een melding" wordt hier NIET bewezen, want het is het niet:
  *   een melding vraagt geen antwoord (`CONTEXT.md`) en de vraag staat daarom
  *   alleen in "Wacht op jou". Deze test bewijst juist dat er geen melding komt.
@@ -21,6 +23,12 @@ import { expect, test } from "@playwright/test";
  *   geladen worden en alleen de database de vraag nog kent.
  * - "Staat het antwoord al in het document, dan vraagt de agent niet" wordt wel
  *   bewezen, via de action en daarna via de taakpagina.
+ * - De tweede test hier bewijst dat een vraag aan een adres dat geen lid is met
+ *   403 wordt geweigerd en dat de vraag daarna op te heffen is, ook via de
+ *   knop in de taakpagina. De hervat opnieuw starten
+ *   (`retry-human-task-resume`) wordt hier niet bewezen: daarvoor moet de
+ *   LLM-call mislukken, en dat kan alleen in
+ *   `tests/collaboration/human-task-resume.test.ts`.
  */
 test("T4: agent vraagt een beslissing, taak wacht en de agent hervat", async ({
   request,
@@ -183,4 +191,91 @@ test("T4: agent vraagt een beslissing, taak wacht en de agent hervat", async ({
     (melding: any) => melding.taskId === task.id && melding.title.includes("beslissing"),
   );
   expect(vraagMelding).toBeUndefined();
+});
+
+test("T4: een vraag die niemand kan beantwoorden blokkeert de taak niet", async ({
+  request,
+  page,
+}) => {
+  await expect(async () => {
+    const response = await request.get("/_agent-native/actions/list-tasks");
+    expect(response.status()).toBe(200);
+  }).toPass({ timeout: 15000 });
+
+  const createResponse = await request.post("/_agent-native/actions/create-task", {
+    data: { projectName: "E2E Agent", taskTitle: "E2E Opheffen" },
+  });
+  const task = await createResponse.json();
+
+  // Iemand die geen lid is, kan de vraag niet beantwoorden: geen vraag, geen
+  // wachtstatus. De agent kan meteen opnieuw vragen.
+  const nietLid = await request.post("/_agent-native/actions/ask-human-task", {
+    data: {
+      taskId: task.id,
+      askedUserId: "niemand-die-geen-lid-is@e2e.test",
+      question: "Welke migratietool gebruiken we?",
+      reason: "De planning moet weten waarmee we werken.",
+      options: ["Goose", "node-pg-migrate"],
+    },
+  });
+  expect(nietLid.status()).toBe(403);
+  expect((await nietLid.json()).errorCode).toBe("not_a_member");
+
+  const naWeigering = await (
+    await request.get(
+      `/_agent-native/actions/get-task?id=${encodeURIComponent(task.id)}`,
+    )
+  ).json();
+  expect(naWeigering.task.status).toBe("bezig");
+
+  // Aan een echt lid lukt het wel, en in de taakpagina staat de uitweg zichtbaar.
+  const gevraagd = await (
+    await request.post("/_agent-native/actions/ask-human-task", {
+      data: {
+        taskId: task.id,
+        askedUserId: "dev@local.test",
+        question: "Welke migratietool gebruiken we?",
+        reason: "De planning moet weten waarmee we werken.",
+        options: ["Goose", "node-pg-migrate"],
+      },
+    })
+  ).json();
+  expect(gevraagd.asked).toBe(true);
+
+  await page.goto(`/tasks/${task.id}`);
+  const opheffen = page.getByTestId("human-task-opheffen");
+  await expect(opheffen).toHaveCount(1, { timeout: 20_000 });
+
+  const geannuleerd = await request.post("/_agent-native/actions/cancel-human-task", {
+    data: { id: gevraagd.humanTask.id },
+  });
+  expect(geannuleerd.status()).toBe(200);
+  expect((await geannuleerd.json()).cancelled).toBe(true);
+
+  const naAnnuleren = await (
+    await request.get(
+      `/_agent-native/actions/get-task?id=${encodeURIComponent(task.id)}`,
+    )
+  ).json();
+  expect(naAnnuleren.task.status).toBe("bezig");
+  expect(naAnnuleren.events.map((event: any) => event.type)).toContain(
+    "human_task_cancelled",
+  );
+
+  const open = await (await request.get("/_agent-native/actions/list-human-tasks")).json();
+  expect(
+    open.humanTasks.filter((item: any) => item.taskId === task.id),
+  ).toEqual([]);
+
+  // En opnieuw vragen kan: de taak zit niet meer vast.
+  const opnieuw = await request.post("/_agent-native/actions/ask-human-task", {
+    data: {
+      taskId: task.id,
+      askedUserId: "dev@local.test",
+      question: "Wanneer starten we met de migratie?",
+      reason: "De planning moet een datum hebben.",
+      options: ["Volgende week", "Over twee weken"],
+    },
+  });
+  expect(opnieuw.status()).toBe(200);
 });
