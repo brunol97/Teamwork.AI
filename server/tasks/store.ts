@@ -1,7 +1,7 @@
 import { and, desc, eq } from "@agent-native/core/db/schema";
 import { randomUUID } from "node:crypto";
 
-import { getDb } from "../db/client.js";
+import { getDb, type DbTransaction } from "../db/client.js";
 import { projects, tasks, taskEvents } from "../db/schema.js";
 
 export interface CreateTaskInput {
@@ -142,9 +142,13 @@ export async function createTaskEvent(
   actorType: "user" | "agent" | "system",
   actorId: string,
   type: string,
-  data: string,
+  data: string | null,
+  /**
+   * Schrijft binnen een bestaande transactie wanneer de event bij een andere
+   * schrijfactie hoort, zodat beide writes of allebei slagen.
+   */
+  db: Pick<DbTransaction, "insert"> = getDb(),
 ): Promise<TaskEvent> {
-  const db = getDb();
   const now = Date.now();
   const id = randomUUID();
 

@@ -1,6 +1,12 @@
 import { defineAction, fail } from "@agent-native/core/action";
 import { z } from "zod";
 
+import { parseSectionRequest } from "../server/documents/markdown.js";
+import {
+  addWorkDocumentSection,
+  WorkDocumentConflictError,
+} from "../server/documents/store.js";
+import { notifyTaskFollowers } from "../server/collaboration/notifications.js";
 import { generateOllamaResponse } from "../server/llm/ollama.js";
 import {
   createTaskEvent,
@@ -10,7 +16,7 @@ import {
 
 export default defineAction({
   description:
-    "Send a message in a task and let the Ollama agent respond. Both messages are recorded in the activity log.",
+    "Send a message in a task and let the Ollama agent respond. Both messages are recorded in the activity log, and every volger of the task gets a melding. When the user asks for a section ('schrijf een sectie over X'), the agent's answer is also added to the werkdocument of the task as a new section.",
   schema: z.object({
     taskId: z.string().min(1).describe("Task id"),
     message: z.string().min(1).describe("Message to send to the agent"),
@@ -50,10 +56,48 @@ export default defineAction({
 
     await createTaskEvent(taskId, "agent", "ollama", "message", response);
 
+    // Volgers van de taak krijgen een melding; die vraagt geen antwoord.
+    await notifyTaskFollowers({
+      taskId,
+      orgId,
+      title: `Antwoord van de agent in ${task.title}`,
+      body: response,
+    });
+
+    const sectionRequest = parseSectionRequest(message);
+    let documentSection: { title: string } | null = null;
+    if (sectionRequest) {
+      // De agent schrijft zijn sectie zonder versie mee te geven en probeert
+      // het opnieuw bij een conflict. Lukt het na die pogingen niet, dan is dat
+      // geen 500 maar een conflict: het antwoord van de agent staat al in de
+      // activity log en blijft daar staan.
+      try {
+        await addWorkDocumentSection({
+          taskId,
+          orgId,
+          title: sectionRequest.title,
+          body: response,
+          actorType: "agent",
+          actorId: "ollama",
+        });
+        documentSection = { title: sectionRequest.title };
+      } catch (error) {
+        if (!(error instanceof WorkDocumentConflictError)) {
+          throw error;
+        }
+        fail(error.message, {
+          errorCode: "conflict",
+          statusCode: 409,
+          details: { currentVersion: error.currentVersion },
+        });
+      }
+    }
+
     return {
       taskId,
       userMessage: message,
       agentMessage: response,
+      documentSection,
     };
   },
 });
