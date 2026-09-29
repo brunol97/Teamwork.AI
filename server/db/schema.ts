@@ -65,6 +65,12 @@ export const workDocuments = table(
     taskId: text("task_id").notNull().unique(),
     markdown: text("markdown").notNull().default(""),
     yjsState: text("yjs_state"),
+    /**
+     * Versie van het werkdocument. Elke schrijfactie verhoogt hem, zodat een
+     * tweede bewerker een conflict herkent in plaats van wijzigingen te
+     * overschrijven. `yjsState` blijft ongebruikt: er is geen gedeelde
+     * yjs-sessie, wel een optimistic-concurrencycheck.
+     */
     version: integer("version").notNull().default(0),
     createdAt: bigint("created_at", { mode: "number" }).notNull(),
     updatedAt: bigint("updated_at", { mode: "number" }).notNull(),

@@ -1,7 +1,7 @@
 import { and, eq, sql } from "@agent-native/core/db/schema";
 import { randomUUID } from "node:crypto";
 
-import { getDb } from "../db/client.js";
+import { getDb, type DbTransaction } from "../db/client.js";
 import { workDocuments } from "../db/schema.js";
 import { createTaskEvent, getTask } from "../tasks/store.js";
 import { appendSection } from "./markdown.js";
@@ -10,8 +10,9 @@ export interface WorkDocument {
   taskId: string;
   markdown: string;
   /**
-   *versie van het werkdocument. Elke schrijfactie verhoogt hem, zodat de tweede
-   * bewerker een conflict kan herkennen in plaats van wijzigingen te overschrijven.
+   * Versie van het werkdocument. Elke schrijfactie verhoogt hem, zodat een
+   * tweede bewerker een conflict herkent in plaats van wijzigingen te
+   * overschrijven.
    */
   version: number;
   updatedAt: number;
@@ -158,45 +159,50 @@ async function writeWorkDocument({
     return undefined;
   }
 
-  const db = getDb();
   const now = Date.now();
 
-  const version = await writeContentWithVersionCheck({
-    taskId,
-    markdown,
-    now,
-    expectedVersion,
+  // Het werkdocument en de activity-log entry horen bij elkaar: zonder de entry
+  // is de wijziging niet gelogd en dus onvindbaar. Eén transactie, dus een
+  // mislukte event insert maakt de markdown-schrijfactie ongedaan.
+  const version = await getDb().transaction(async (tx) => {
+    const written = await writeContentWithVersionCheck({
+      db: tx,
+      taskId,
+      markdown,
+      now,
+      expectedVersion,
+    });
+    await createTaskEvent(taskId, actorType, actorId, eventType, eventData, tx);
+    return written;
   });
-
-  await createTaskEvent(taskId, actorType, actorId, eventType, eventData);
 
   return { taskId, markdown, version, updatedAt: now };
 }
 
 /**
  * Schrijft de markdown weg met een check-and-set op de versie. Zonder
- * `expectedVersion` wordt de huidige versie opgehaald en het schrijven een paar
- * keer herhaald, zodat twee gelijktijdige aanpassingen elkaar niet overschrijven.
+ * `expectedVersion` wordt de actuele versie opgehaald en het schrijven een
+ * paar keer herhaald, zodat twee gelijktijdige aanpassingen elkaar niet
+ * overschrijven.
  */
 async function writeContentWithVersionCheck({
+  db,
   taskId,
   markdown,
   now,
   expectedVersion,
 }: {
+  db: DbTransaction;
   taskId: string;
   markdown: string;
   now: number;
   expectedVersion?: number;
 }): Promise<number> {
-  const db = getDb();
   const attempts = expectedVersion === undefined ? 5 : 1;
 
   for (let attempt = 0; attempt < attempts; attempt++) {
     const targetVersion =
-      expectedVersion === undefined
-        ? (await readVersion(taskId)) ?? 0
-        : expectedVersion;
+      expectedVersion === undefined ? ((await readVersion(db, taskId)) ?? 0) : expectedVersion;
 
     // Maak het werkdocument aan als de taak nog geen werkdocument heeft.
     const inserted = await db
@@ -223,9 +229,7 @@ async function writeContentWithVersionCheck({
         updatedAt: now,
         version: sql`${workDocuments.version} + 1`,
       })
-      .where(
-        and(eq(workDocuments.taskId, taskId), eq(workDocuments.version, targetVersion)),
-      )
+      .where(and(eq(workDocuments.taskId, taskId), eq(workDocuments.version, targetVersion)))
       .returning({ version: workDocuments.version });
 
     if (updated.length > 0) {
@@ -233,12 +237,11 @@ async function writeContentWithVersionCheck({
     }
   }
 
-  const currentVersion = (await readVersion(taskId)) ?? 0;
+  const currentVersion = (await readVersion(db, taskId)) ?? 0;
   throw new WorkDocumentConflictError(currentVersion);
 }
 
-async function readVersion(taskId: string): Promise<number | undefined> {
-  const db = getDb();
+async function readVersion(db: DbTransaction, taskId: string): Promise<number | undefined> {
   const rows = await db
     .select({ version: workDocuments.version })
     .from(workDocuments)

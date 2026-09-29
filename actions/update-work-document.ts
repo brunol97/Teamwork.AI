@@ -8,7 +8,7 @@ import {
 
 export default defineAction({
   description:
-    "Replace the markdown of the werkdocument of a task and log the change in the activity log. Use this to correct or rewrite the whole document; use add-work-document-section to append a section. Pass expectedVersion (the version you read) so a concurrent edit by someone else is reported instead of overwritten.",
+    "Replace the markdown of the werkdocument of a task and log the change in the activity log. Use this to correct or rewrite the whole document; use add-work-document-section to append a section. Pass expectedVersion (the version you read) so a concurrent edit by someone else is reported as a conflict instead of being overwritten.",
   schema: z.object({
     taskId: z.string().min(1).describe("Task id"),
     markdown: z

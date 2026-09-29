@@ -14,6 +14,7 @@
     "action": "agent-native action",
     "script": "agent-native script",
     "test": "vitest --run --passWithNoTests",
+    "test:e2e": "playwright test",
     "agent-native:doctor": "agent-native doctor",
     "doctor": "agent-native doctor"
   },

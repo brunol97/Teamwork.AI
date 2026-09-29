@@ -8,6 +8,7 @@ import { PresenceBar } from "@/components/task/PresenceBar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { userFacingActionError } from "@/lib/action-error";
 import {
   insertDocumentBlock,
   type DocumentBlockKind,
@@ -20,6 +21,7 @@ export function meta() {
 const WORK_DOCUMENT_BLOCKS: { kind: DocumentBlockKind; label: string }[] = [
   { kind: "kop1", label: "Kop 1" },
   { kind: "kop2", label: "Kop 2" },
+  { kind: "kop3", label: "Kop 3" },
   { kind: "opsomming", label: "Opsomming" },
   { kind: "genummerd", label: "Genummerd" },
   { kind: "tabel", label: "Tabel" },
@@ -105,7 +107,11 @@ export default function TaskDetailRoute() {
           setConflict(null);
           setVersion(document.version);
         },
-        onError: (error) => setConflict(error.message),
+        onError: (error) => {
+          setConflict(
+            userFacingActionError(error, "Opslaan mislukt. Probeer het opnieuw."),
+          );
+        },
       },
     );
   };

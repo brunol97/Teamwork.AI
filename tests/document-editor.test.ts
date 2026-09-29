@@ -6,10 +6,22 @@ import {
 } from "../app/lib/document-editor.js";
 
 describe("insertDocumentBlock", () => {
+  it("turns the current line into a first level heading", () => {
+    const result = insertDocumentBlock("Eisen\n", 0, 0, "kop1");
+    expect(result.markdown).toBe("# Eisen\n");
+    expect(result.caret).toBe(7);
+  });
+
   it("turns the current line into a heading", () => {
     const result = insertDocumentBlock("Eisen\n", 0, 0, "kop2");
     expect(result.markdown).toBe("## Eisen\n");
     expect(result.caret).toBe(8);
+  });
+
+  it("turns the current line into a third level heading", () => {
+    const result = insertDocumentBlock("Eisen\n", 0, 0, "kop3");
+    expect(result.markdown).toBe("### Eisen\n");
+    expect(result.caret).toBe(9);
   });
 
   it("prefixes every selected line with a bullet", () => {
