@@ -261,6 +261,10 @@ Set environment variables separately for **Production** and **Preview** in the V
 | `OLLAMA_API_KEY` | required | required | Ollama API key. |
 | `RESEND_API_KEY` | required | required | Magic-link email provider. |
 | `BETTER_AUTH_EMAIL_FROM` | required | required | Magic-link sender address. |
+| `POSTHOG_API_KEY` | required | required | PostHog server capture key. Enables server `track()`/`identify()` and server exception capture. |
+| `POSTHOG_HOST` | `https://eu.i.posthog.com` | `https://eu.i.posthog.com` | PostHog ingest host. |
+| `POSTHOG_PUBLIC_KEY` | required | required | Public PostHog key. Enables browser exception capture. |
+| `POSTHOG_PUBLIC_HOST` | `https://eu.i.posthog.com` | `https://eu.i.posthog.com` | PostHog ingest host used by the browser. |
 
 ### CI gating
 
