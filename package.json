@@ -6,9 +6,9 @@
   "type": "module",
   "scripts": {
     "migrate": "tsx scripts/migrate.ts",
-    "migrate:production": "tsx scripts/migrate-production.ts",
+    "migrate:production": "tsx scripts/migrate.ts",
     "dev": "agent-native dev --open",
-    "build": "tsx scripts/migrate.ts && NITRO_PRESET=vercel agent-native build",
+    "build": "tsx scripts/migrate-on-deploy.ts && NITRO_PRESET=vercel agent-native build",
     "start": "agent-native start",
     "typecheck": "agent-native typecheck",
     "action": "agent-native action",

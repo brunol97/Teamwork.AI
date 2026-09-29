@@ -4,6 +4,10 @@ on:
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened]
+  # Ook op een push naar main. De merge-commit zelf werd anders nooit getest:
+  # pull_request test de PR-head, niet wat er daadwerkelijk op main terechtkomt.
+  push:
+    branches: [main]
 
 concurrency:
   group: ci-${{ github.head_ref }}
@@ -66,3 +70,5 @@ jobs:
 
       - name: End-to-end tests
         run: pnpm test:e2e
+        env:
+          AUTH_DISABLED: "true"
