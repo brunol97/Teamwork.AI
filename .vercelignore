@@ -1,0 +1,18 @@
+# Gitignored is niet hetzelfde als "niet uploaden". De Vercel CLI uploadt de hele
+# projectmap en telt elk bestand mee tegen een limiet van 15.000.
+#
+# data/ is de boosdoener: het bevat de PGlite-databases, en sinds elke Vitest-worker
+# een eigen database krijgt (tests/setup.ts gebruikt VITEST_WORKER_ID) groeit die map
+# met elke testrun. Bij 31 databases stond de deploy op 61.142 bestanden.
+#
+# Niets hiervan is nodig in de build: productie en preview gebruiken DATABASE_URL
+# (Postgres), nooit PGlite.
+
+data/
+test-results/
+playwright-report/
+.output/
+.react-router/
+.generated/
+.agent-native/
+node_modules
