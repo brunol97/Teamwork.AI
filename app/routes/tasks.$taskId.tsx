@@ -1,14 +1,14 @@
-import {
-  actionErrorMessage,
-  useActionMutation,
-  useActionQuery,
-} from "@agent-native/core/client/hooks";
+import { useActionMutation, useActionQuery } from "@agent-native/core/client/hooks";
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router";
 
+import { FollowTaskButton, MeldingenPanel } from "@/components/task/MeldingenPanel";
+import { InviteLinkPanel } from "@/components/task/InviteLinkPanel";
+import { PresenceBar } from "@/components/task/PresenceBar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { userFacingActionError } from "@/lib/action-error";
 import {
   insertDocumentBlock,
   type DocumentBlockKind,
@@ -108,11 +108,8 @@ export default function TaskDetailRoute() {
           setVersion(document.version);
         },
         onError: (error) => {
-          // `error.message` bevat intern detail ("Action x failed: ..."), dus
-          // tonen we de melding die de action zelf schreef en loggen we de rest.
-          console.error("opslaan van het werkdocument mislukt:", error);
           setConflict(
-            actionErrorMessage(error) ?? "Opslaan mislukt. Probeer het opnieuw.",
+            userFacingActionError(error, "Opslaan mislukt. Probeer het opnieuw."),
           );
         },
       },
@@ -131,11 +128,17 @@ export default function TaskDetailRoute() {
 
   return (
     <div className="mx-auto flex h-full max-w-5xl flex-col p-6">
-      <div className="mb-4">
-        <h1 className="text-2xl font-semibold">{task.title}</h1>
-        <p className="text-sm text-muted-foreground">
-          {task.projectName} · {task.status} · lead: {task.leadId}
-        </p>
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h1 className="text-2xl font-semibold">{task.title}</h1>
+          <p className="text-sm text-muted-foreground">
+            {task.projectName} · {task.status} · lead: {task.leadId}
+          </p>
+        </div>
+        <div className="flex flex-col items-end gap-2">
+          <FollowTaskButton taskId={task.id} />
+          <PresenceBar taskId={task.id} />
+        </div>
       </div>
 
       <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-2">
@@ -254,6 +257,9 @@ export default function TaskDetailRoute() {
               {isPending ? "Bezig..." : "Verstuur"}
             </Button>
           </form>
+
+          <MeldingenPanel taskId={task.id} />
+          <InviteLinkPanel taskId={task.id} />
         </section>
       </div>
     </div>
