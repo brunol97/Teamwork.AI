@@ -8,6 +8,7 @@ import {
   getTask,
   listTaskEvents,
   listTasks,
+  setTaskStatus,
 } from "../../server/tasks/store.js";
 
 describe("tasks store", () => {
@@ -60,6 +61,21 @@ describe("tasks store", () => {
 
     const fromSameOrg = await getTask(task.id, "org-a");
     expect(fromSameOrg).toBeDefined();
+  });
+
+  it("does not change the status of a task in another organization", async () => {
+    const orgId = "org-een";
+    const task = await createTask({
+      orgId,
+      leadId: "a@b.c",
+      projectName: "Project",
+      taskTitle: "Datamigratie",
+    });
+
+    const gezet = await setTaskStatus(task.id, "org-een-ander", "wacht op iemand");
+
+    expect(gezet).toBe(false);
+    expect((await getTask(task.id, orgId))?.status).toBe("bezig");
   });
 
   it("records user and agent messages in the activity log", async () => {

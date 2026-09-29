@@ -37,8 +37,8 @@ Single-context repo: one `CONTEXT.md` at the repo root and system-wide ADRs in `
 | `list-meldingen` | Someone wants to see their meldingen | — | `{ meldingen, ongelezen }` |
 | `mark-meldingen-read` | Someone read their meldingen | `taskId` (optional) | `{ gelezen }` |
 | `ask-human-task` | Agent asks a person a decision question and the task waits | `taskId`, `askedUserId`, `question`, `reason`, `options` | `{ taskId, asked, knownAnswer, humanTask }`; `asked` is `false` when the answer was already found |
-| `answer-human-task` | The asked person answers and the agent resumes | `id`, `answer` | `{ id, taskId, answer, taskStatus, agentMessage }` |
-| `list-human-tasks` | "Wacht op jou": the open questions for this person | — | `{ humanTasks }` |
+| `answer-human-task` | The asked person answers and the agent resumes | `id`, `answer` | `{ id, taskId, answer, taskStatus, agentMessage, resumeFailed }` |
+| `list-human-tasks` | "Wacht op jou": the open questions for this person, with the task title | — | `{ humanTasks }` |
 | `view-screen` | Read the current UI navigation/selection | — | `navigation` state |
 | `navigate` | Open a route in the UI | `path` | — |
 
@@ -55,11 +55,12 @@ Task actions are scoped to the caller's organization. A user from another organi
 
 ## Human task (agent vraagt een beslissing)
 
-- A **human task** is a request from the agent to a specific person that needs an answer, so the task pauses. The agent calls `ask-human-task` with three required fields: what it wants (`question`), why it needs the answer (`reason`) and at least two `options`. A question with an empty "waarom" is refused.
-- **Eerst zoeken, dan vragen.** `ask-human-task` searches the werkdocument of the task and earlier answered questions in the same project before it asks. When the answer is already there it returns `asked: false` with the `knownAnswer` (option, source and a snippet) and creates nothing.
-- The open question appears in the person's **"Wacht op jou"** list (`list-human-tasks`, shown in the task page) and as a melding. It shows all three fields.
+- A **human task** is a request from the agent to a specific person that needs an answer, so the task pauses. The agent calls `ask-human-task` with three required fields: what it wants (`question`), why it needs the answer (`reason`) and at least two `options`. A question with an empty "waarom" is refused (`invalid_question`, 400).
+- **Eerst zoeken, dan vragen.** `ask-human-task` searches the werkdocument of the task and earlier answered questions in the same project before it asks. Only the *answer* of an earlier question counts as a source, never its question text, and a text that names more than one option without choosing ("we moeten kiezen tussen A en B") is no answer at all. When the answer is known, the action returns `asked: false` with the `knownAnswer` (option, source and a snippet) and creates nothing.
+- The open question appears in the person's **"Wacht op jou"** list (`list-human-tasks`), shown on the task list and on the task page, with all three fields. A question is **not** a melding: `CONTEXT.md` says a melding needs no answer and does not pause the task, and this question does the opposite. So the question is not sent as a melding either.
+- **Eén open vraag per taak.** A second `ask-human-task` while a question is still open fails with `question_already_open` (409). The question and the task status are written in one transaction, so a failed status write leaves no question behind.
 - **The waiting state lives in SQL.** The task status is `wacht op iemand` while an open question exists, and the question itself is a row in `human_tasks`. After a restart of the server, `answer-human-task` picks up that row and the agent continues from the stored question, options and answer. Nothing is kept in process memory.
-- Answering logs `human_task_answered` in the activity log, puts the task back on `bezig`, and lets the agent write its follow-up as a normal agent message.
+- Answering logs `human_task_answered` in the activity log, puts the task back on `bezig`, and lets the agent write its follow-up as a normal agent message. The answer is saved before the agent resumes: if that LLM call fails, the action still succeeds with `resumeFailed: true` and logs `human_task_resume_failed` as a system event, because the answer is durable and a retry would only return `already_answered`.
 
 ## Werkdocument
 

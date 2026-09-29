@@ -63,10 +63,33 @@ export default defineAction({
       JSON.stringify({ question: answered.question, answer }),
     );
 
-    const agentMessage = await resumeAgentAfterAnswer({
-      humanTask: answered,
-      orgId,
-    });
+    // Vanaf hier staat het antwoord duurzaam in de database. Een mislukte hervat
+    // is dus geen fout voor de mens die antwoordde: het antwoord is bewaard, de
+    // taak staat weer op "bezig" en een retry zou alleen `already_answered`
+    // opleveren. We loggen de mislukte hervat en geven alsnog succes terug.
+    let agentMessage = "";
+    let resumeFailed = false;
+    try {
+      agentMessage = await resumeAgentAfterAnswer({
+        humanTask: answered,
+        orgId,
+      });
+    } catch (error) {
+      resumeFailed = true;
+      const reden = error instanceof Error ? error.message : String(error);
+      console.error("hervat van de agent na een antwoord mislukt:", reden);
+      await createTaskEvent(
+        answered.taskId,
+        "system",
+        "agent",
+        "human_task_resume_failed",
+        JSON.stringify({
+          question: answered.question,
+          answer: answered.answer,
+          reason: reden,
+        }),
+      );
+    }
 
     return {
       id: answered.id,
@@ -74,6 +97,7 @@ export default defineAction({
       answer: answered.answer,
       taskStatus: task?.status ?? null,
       agentMessage,
+      resumeFailed,
     };
   },
 });

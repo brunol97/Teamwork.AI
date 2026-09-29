@@ -51,6 +51,20 @@ export class InvalidHumanTaskError extends Error {
   }
 }
 
+/**
+ * Wordt gegooid wanneer er al een open vraag op de taak staat. Twee open
+ * vragen zouden de taak twee keer laten wachten, en de agent zou pas na de
+ * tweede reactie verdergaan.
+ */
+export class OpenHumanTaskExistsError extends Error {
+  readonly openQuestionExists = true;
+
+  constructor(message: string) {
+    super(message);
+    this.name = "OpenHumanTaskExistsError";
+  }
+}
+
 function parseOptions(raw: string): string[] {
   try {
     const parsed: unknown = JSON.parse(raw);
@@ -104,6 +118,17 @@ export async function createHumanTask({
     );
   }
 
+  // Eén open vraag per taak: twee open rijen zouden de taak twee keer laten
+  // wachten, tot beide beantwoord zijn.
+  const bestaand = (await listHumanTasksForTask(taskId, orgId)).find(
+    (candidate) => candidate.status === "open",
+  );
+  if (bestaand) {
+    throw new OpenHumanTaskExistsError(
+      `Er staat al een open vraag op deze taak: "${bestaand.question}". Wacht op het antwoord daarvan in plaats van opnieuw te vragen.`,
+    );
+  }
+
   const db = getDb();
   const now = Date.now();
   const row = {
@@ -121,8 +146,16 @@ export async function createHumanTask({
     updatedAt: now,
   };
 
-  await db.insert(humanTasks).values(row);
-  await setTaskStatus(taskId, orgId, TASK_STATUS_WAITING);
+  // De vraag en de wachtstatus horen bij elkaar: zonder de status blijft er een
+  // open vraag over die de agent nooit meekrijgt. Eén transactie, dus een
+  // mislukte status-schrijfactie maakt de vraag ongedaan.
+  await db.transaction(async (tx) => {
+    await tx.insert(humanTasks).values(row);
+    const gezet = await setTaskStatus(taskId, orgId, TASK_STATUS_WAITING, tx);
+    if (!gezet) {
+      throw new Error(`Taak ${taskId} bestaat niet binnen organisatie ${orgId}.`);
+    }
+  });
 
   return toHumanTask(row);
 }
@@ -142,15 +175,24 @@ export async function getHumanTask(
   return rows[0] ? toHumanTask(rows[0]) : undefined;
 }
 
-/** De openstaande vragen van één persoon; dat is de lijst "Wacht op jou". */
+export interface OpenHumanTask extends HumanTask {
+  /** De titel van de taak; "Wacht op jou" is namelijk niet per taak alleen. */
+  taskTitle: string;
+}
+
+/**
+ * De openstaande vragen van één persoon; dat is de lijst "Wacht op jou".
+ * De taaktitel reist mee, zodat de lijst ook buiten de taakpagina te lezen is.
+ */
 export async function listOpenHumanTasks(
   orgId: string,
   askedUserId: string,
-): Promise<HumanTask[]> {
+): Promise<OpenHumanTask[]> {
   const db = getDb();
   const rows = await db
-    .select()
+    .select({ humanTask: humanTasks, taskTitle: tasks.title })
     .from(humanTasks)
+    .innerJoin(tasks, eq(humanTasks.taskId, tasks.id))
     .where(
       and(
         eq(humanTasks.organizationId, orgId),
@@ -160,7 +202,10 @@ export async function listOpenHumanTasks(
     )
     .orderBy(desc(humanTasks.createdAt));
 
-  return rows.map(toHumanTask);
+  return rows.map((row) => ({
+    ...toHumanTask(row.humanTask),
+    taskTitle: row.taskTitle,
+  }));
 }
 
 /** Alle vragen van een taak, nieuwste eerst; alleen binnen de organisatie. */

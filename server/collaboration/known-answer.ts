@@ -37,10 +37,28 @@ function snippetAround(source: string, option: string): string {
   return source.trim().slice(start, at + needle.length + 60);
 }
 
+/**
+ * Zoekt welke optie in de bronnen staat. De regel is niet "de eerste optie uit
+ * de lijst die voorkomt", maar "de optie die de tekst draagt":
+ *
+ * - Staat er geen enkele optie in de tekst, dan is er geen bekend antwoord.
+ * - Staat er precies één optie, dan is dát het bekende antwoord — ook als die
+ *   niet de eerste in de lijst staat.
+ * - Staan er meerdere, dan kiest de tekst niets: "we moeten kiezen tussen
+ *   Postgres en MongoDB" is geen keuze. Dan blijft het antwoord onbekend en
+ *   mag de agent alsnog vragen. Liever een vraag te veel dan een antwoord dat
+ *   de mens nooit gaf.
+ */
 function findOptionInText(
   sources: { source: KnownAnswerSource; text: string }[],
   options: string[],
 ): KnownAnswer | null {
+  const matches: {
+    option: string;
+    source: KnownAnswerSource;
+    text: string;
+  }[] = [];
+
   for (const option of options) {
     const needle = normalizeText(option);
     // Een optie van één of twee letters ("Ja") levert te veel toevallige
@@ -50,15 +68,26 @@ function findOptionInText(
     }
     for (const candidate of sources) {
       if (normalizeText(candidate.text).includes(needle)) {
-        return {
+        matches.push({
           option,
           source: candidate.source,
-          snippet: snippetAround(candidate.text, option),
-        };
+          text: candidate.text,
+        });
       }
     }
   }
-  return null;
+
+  const distinct = new Set(matches.map((match) => match.option));
+  if (distinct.size !== 1) {
+    return null;
+  }
+
+  const match = matches[0];
+  return {
+    option: match.option,
+    source: match.source,
+    snippet: snippetAround(match.text, match.option),
+  };
 }
 
 /** Woorden van minimaal vier letters; korte woorden geven te veel toeval. */
@@ -117,11 +146,10 @@ export async function findKnownAnswer({
     orgId,
   );
   for (const previous of answered) {
+    // Alleen het antwoord zelf is een bron. De vraagtekst noemt per definitie
+    // alle opties, dus meenemen zou elke optie als "bekend" doen lijken.
     if (previous.answer && sameSubject(previous.question, question)) {
-      sources.push({
-        source: "eerder antwoord",
-        text: `${previous.question} ${previous.answer}`,
-      });
+      sources.push({ source: "eerder antwoord", text: previous.answer });
     }
   }
 

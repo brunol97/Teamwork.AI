@@ -9,6 +9,7 @@ import { PresenceBar } from "@/components/task/PresenceBar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { describeEvent, type ActivityEvent } from "@/lib/activity-log";
 import { userFacingActionError } from "@/lib/action-error";
 import {
   insertDocumentBlock,
@@ -27,24 +28,6 @@ const WORK_DOCUMENT_BLOCKS: { kind: DocumentBlockKind; label: string }[] = [
   { kind: "genummerd", label: "Genummerd" },
   { kind: "tabel", label: "Tabel" },
 ];
-
-type ActivityEvent = {
-  id: string;
-  type: string;
-  actorType: string;
-  data: string | null;
-};
-
-function describeEvent(event: ActivityEvent): { actor: string; text: string } {
-  const actor = event.actorType === "agent" ? "Agent" : "Jij";
-  if (event.type === "document_section_added") {
-    return { actor, text: `Sectie "${event.data}" toegevoegd aan het werkdocument.` };
-  }
-  if (event.type === "document_changed") {
-    return { actor, text: "Werkdocument bewerkt." };
-  }
-  return { actor, text: event.data ?? "" };
-}
 
 export default function TaskDetailRoute() {
   const { taskId } = useParams<{ taskId: string }>();

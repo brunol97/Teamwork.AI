@@ -1,17 +1,17 @@
 import { defineAction, fail } from "@agent-native/core/action";
 import { z } from "zod";
 
-import { createMelding } from "../server/collaboration/notifications.js";
 import {
   createHumanTask,
   InvalidHumanTaskError,
+  OpenHumanTaskExistsError,
 } from "../server/collaboration/human-tasks.js";
 import { findKnownAnswer } from "../server/collaboration/known-answer.js";
 import { getTask } from "../server/tasks/store.js";
 
 export default defineAction({
   description:
-    "Ask a specific person a decision question with options and pause the task until they answer ('human task'). The question must state what the agent wants, why it needs the answer, and at least two options. The agent is expected to call this only after searching the werkdocument and earlier answers in the project; when the answer is already known there, this action reports that instead of asking again. The question appears in the person's 'Wacht op jou' list and as a melding.",
+    "Ask a specific person a decision question with options and pause the task until they answer ('human task'). The question must state what the agent wants, why it needs the answer, and at least two options. The agent is expected to call this only after searching the werkdocument and earlier answers in the project; when the answer is already known there, this action reports that instead of asking again. The question appears in the person's 'Wacht op jou' list on the task list and the task page; it is not a melding, because a melding needs no answer while this question pauses the task.",
   schema: z.object({
     taskId: z.string().min(1).describe("Task id"),
     askedUserId: z
@@ -67,26 +67,18 @@ export default defineAction({
         options,
       });
 
-      // Dezelfde aanpak als T3: de vraag gaat als melding naar de persoon, met
-      // alle drie de velden in de tekst.
-      await createMelding({
-        taskId,
-        orgId,
-        recipientId: askedUserId,
-        title: `De agent vraagt een beslissing in ${task.title}`,
-        body: [
-          `Wat: ${humanTask?.question ?? question}`,
-          `Waarom: ${humanTask?.reason ?? reason}`,
-          `Opties: ${(humanTask?.options ?? options).join(", ")}`,
-        ].join("\n"),
-      });
-
       return { taskId, asked: true, knownAnswer: null, humanTask };
     } catch (error) {
       if (error instanceof InvalidHumanTaskError) {
         fail(error.message, {
           errorCode: "invalid_question",
           statusCode: 400,
+        });
+      }
+      if (error instanceof OpenHumanTaskExistsError) {
+        fail(error.message, {
+          errorCode: "question_already_open",
+          statusCode: 409,
         });
       }
       throw error;
