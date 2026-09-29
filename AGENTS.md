@@ -20,8 +20,8 @@ Single-context repo: one `CONTEXT.md` at the repo root and system-wide ADRs in `
 | `list-tasks` | User asks what tasks exist | — | Array of tasks in the current organization |
 | `get-task` | User opens or asks about a specific task | `id` | `{ task, events }` including the activity log |
 | `send-task-message` | User sends a message in a task and wants the Ollama agent to reply | `taskId`, `message` | `{ taskId, userMessage, agentMessage, documentSection }`; a request for a section also appends that section to the werkdocument |
-| `get-work-document` | User or agent reads the werkdocument of a task | `taskId` | `{ taskId, markdown, updatedAt }` |
-| `update-work-document` | User rewrites the whole werkdocument | `taskId`, `markdown` | `{ taskId, markdown, updatedAt }` |
+| `get-work-document` | User or agent reads the werkdocument of a task | `taskId` | `{ taskId, markdown, version, updatedAt }` |
+| `update-work-document` | User rewrites the whole werkdocument | `taskId`, `markdown`, `expectedVersion` | `{ taskId, markdown, version, updatedAt }`; a stale `expectedVersion` fails with a `conflict` |
 | `add-work-document-section` | Agent appends a section to the werkdocument | `taskId`, `title`, `body` | `{ taskId, sectionTitle, markdown }` |
 | `view-screen` | Read the current UI navigation/selection | — | `navigation` state |
 | `navigate` | Open a route in the UI | `path` | — |
@@ -32,7 +32,8 @@ Task actions are scoped to the caller's organization. A user from another organi
 
 - Every task has one werkdocument in markdown (`work_documents`): headings, lists and tables. The lead edits it in the task page, the agent appends sections to it.
 - The user asks for a section in the task chat ("Schrijf een sectie over datamigratie"). `send-task-message` then adds the agent's answer as a section and logs it.
-- Document changes are logged in the activity log as `document_changed` (the lead rewrote the document) and `document_section_added` (a section was appended, with the section title as data).
+- Document changes are logged in the activity log as `document_changed` (the lead rewrote the document) and `document_section_added` (a section was appended, with the section title as data). The document write and its log entry happen in one transaction, so a change is never saved without its entry in the log.
+- Concurrent edits are protected with a version check: every write increments `work_documents.version`, and a write that passes a stale `expectedVersion` is refused with a `conflict`. The second editor keeps their text and gets a Dutch message with a `Herladen` button, so no work is lost silently. The agent, which does not read a version first, retries the write itself.
 
 ## Agent behavior
 

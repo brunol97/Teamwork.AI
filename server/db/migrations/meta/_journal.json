@@ -8,6 +8,13 @@
       "when": 1790605221203,
       "tag": "0000_cold_kylun",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1790655441955,
+      "tag": "0001_chief_vargas",
+      "breakpoints": true
     }
   ]
 }

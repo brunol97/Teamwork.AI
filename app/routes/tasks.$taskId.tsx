@@ -5,6 +5,7 @@ import { useParams } from "react-router";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { userFacingActionError } from "@/lib/action-error";
 import {
   insertDocumentBlock,
   type DocumentBlockKind,
@@ -17,6 +18,7 @@ export function meta() {
 const WORK_DOCUMENT_BLOCKS: { kind: DocumentBlockKind; label: string }[] = [
   { kind: "kop1", label: "Kop 1" },
   { kind: "kop2", label: "Kop 2" },
+  { kind: "kop3", label: "Kop 3" },
   { kind: "opsomming", label: "Opsomming" },
   { kind: "genummerd", label: "Genummerd" },
   { kind: "tabel", label: "Tabel" },
@@ -43,9 +45,10 @@ function describeEvent(event: ActivityEvent): { actor: string; text: string } {
 export default function TaskDetailRoute() {
   const { taskId } = useParams<{ taskId: string }>();
   const { data, isLoading } = useActionQuery("get-task", { id: taskId ?? "" });
-  const { data: workDocument } = useActionQuery("get-work-document", {
-    taskId: taskId ?? "",
-  });
+  const { data: workDocument, refetch: refetchWorkDocument } = useActionQuery(
+    "get-work-document",
+    { taskId: taskId ?? "" },
+  );
   const { mutate: sendMessage, isPending } = useActionMutation("send-task-message");
   const { mutate: saveWorkDocument, isPending: isSaving } = useActionMutation(
     "update-work-document",
@@ -53,12 +56,15 @@ export default function TaskDetailRoute() {
   const [message, setMessage] = useState("");
   const [markdown, setMarkdown] = useState("");
   const [unsavedChanges, setUnsavedChanges] = useState(false);
+  const [version, setVersion] = useState(0);
+  const [conflict, setConflict] = useState<string | null>(null);
   const editorRef = useRef<HTMLTextAreaElement>(null);
 
   // Volg het werkdocument van de server zolang de gebruiker niets heeft getypt.
   useEffect(() => {
     if (workDocument && !unsavedChanges) {
       setMarkdown(workDocument.markdown);
+      setVersion(workDocument.version);
     }
   }, [workDocument, unsavedChanges]);
 
@@ -91,8 +97,22 @@ export default function TaskDetailRoute() {
   const save = () => {
     if (!taskId) return;
     saveWorkDocument(
-      { taskId, markdown },
-      { onSuccess: () => setUnsavedChanges(false) },
+      { taskId, markdown, expectedVersion: version },
+      {
+        onSuccess: (document) => {
+          setUnsavedChanges(false);
+          setConflict(null);
+          setVersion(document.version);
+        },
+        onError: (error) => {
+          setConflict(
+            userFacingActionError(
+              error,
+              "Opslaan mislukt. Probeer het opnieuw.",
+            ),
+          );
+        },
+      },
     );
   };
 
@@ -159,6 +179,30 @@ export default function TaskDetailRoute() {
               sectie over datamigratie&quot;.
             </p>
           </div>
+
+          {conflict ? (
+            <div
+              role="alert"
+              data-testid="conflict-melding"
+              className="mt-2 rounded-md border p-2 text-xs"
+            >
+              {conflict} Jouw tekst staat nog in het veld; herlaad om de versie van de
+              ander te zien.
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="ml-2"
+                onClick={() => {
+                  setUnsavedChanges(false);
+                  setConflict(null);
+                  refetchWorkDocument();
+                }}
+              >
+                Herladen
+              </Button>
+            </div>
+          ) : null}
         </section>
 
         <section className="flex min-h-0 flex-col gap-3">

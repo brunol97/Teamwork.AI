@@ -30,7 +30,7 @@ export default defineAction({
       title,
       body,
       actorType: "agent",
-      actorId: "agent",
+      actorId: "ollama",
     });
     if (!document) {
       fail("Task not found.", {

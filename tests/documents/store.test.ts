@@ -21,7 +21,7 @@ describe("werkdocument store", () => {
     const task = await createTaak("org-doc");
 
     const empty = await getWorkDocument(task.id, "org-doc");
-    expect(empty).toEqual({ taskId: task.id, markdown: "", updatedAt: 0 });
+    expect(empty).toEqual({ taskId: task.id, markdown: "", version: 0, updatedAt: 0 });
 
     const saved = await saveWorkDocument({
       taskId: task.id,
@@ -124,6 +124,7 @@ describe("werkdocument store", () => {
     expect(await getWorkDocument(task.id, "org-doc")).toEqual({
       taskId: task.id,
       markdown: "",
+      version: 0,
       updatedAt: 0,
     });
     expect(await listTaskEvents(task.id, "org-other")).toEqual([]);
