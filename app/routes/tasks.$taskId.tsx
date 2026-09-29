@@ -3,11 +3,13 @@ import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router";
 
 import { FollowTaskButton, MeldingenPanel } from "@/components/task/MeldingenPanel";
+import { HumanTaskPanel } from "@/components/task/HumanTaskPanel";
 import { InviteLinkPanel } from "@/components/task/InviteLinkPanel";
 import { PresenceBar } from "@/components/task/PresenceBar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { describeEvent, type ActivityEvent } from "@/lib/activity-log";
 import { userFacingActionError } from "@/lib/action-error";
 import {
   insertDocumentBlock,
@@ -26,24 +28,6 @@ const WORK_DOCUMENT_BLOCKS: { kind: DocumentBlockKind; label: string }[] = [
   { kind: "genummerd", label: "Genummerd" },
   { kind: "tabel", label: "Tabel" },
 ];
-
-type ActivityEvent = {
-  id: string;
-  type: string;
-  actorType: string;
-  data: string | null;
-};
-
-function describeEvent(event: ActivityEvent): { actor: string; text: string } {
-  const actor = event.actorType === "agent" ? "Agent" : "Jij";
-  if (event.type === "document_section_added") {
-    return { actor, text: `Sectie "${event.data}" toegevoegd aan het werkdocument.` };
-  }
-  if (event.type === "document_changed") {
-    return { actor, text: "Werkdocument bewerkt." };
-  }
-  return { actor, text: event.data ?? "" };
-}
 
 export default function TaskDetailRoute() {
   const { taskId } = useParams<{ taskId: string }>();
@@ -212,6 +196,7 @@ export default function TaskDetailRoute() {
         </section>
 
         <section className="flex min-h-0 flex-col gap-3">
+          <HumanTaskPanel taskId={task.id} />
           <div className="min-h-0 flex-1 space-y-3 overflow-y-auto rounded-lg border p-4">
             {events.length === 0 ? (
               <p className="text-muted-foreground">

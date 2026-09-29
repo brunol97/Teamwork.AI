@@ -2,6 +2,7 @@ import { useActionMutation, useActionQuery } from "@agent-native/core/client/hoo
 import { useState } from "react";
 import { Link } from "react-router";
 
+import { HumanTaskPanel } from "@/components/task/HumanTaskPanel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -33,6 +34,12 @@ export default function TasksRoute() {
   return (
     <div className="mx-auto max-w-2xl p-6">
       <h1 className="mb-6 text-2xl font-semibold">Taken</h1>
+
+      {/* "Wacht op jou" staat hier zodat iemand die elders gevraagd is de vraag
+          ziet zonder eerst de taakpagina te openen. */}
+      <div className="mb-6">
+        <HumanTaskPanel />
+      </div>
 
       <form onSubmit={handleSubmit} className="mb-8 space-y-4 rounded-lg border p-4">
         <div>

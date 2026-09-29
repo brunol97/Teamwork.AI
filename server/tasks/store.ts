@@ -1,4 +1,4 @@
-import { and, desc, eq } from "@agent-native/core/db/schema";
+import { and, desc, eq, inArray } from "@agent-native/core/db/schema";
 import { randomUUID } from "node:crypto";
 
 import { getDb, type DbTransaction } from "../db/client.js";
@@ -135,6 +135,41 @@ export async function getTask(
     .limit(1);
 
   return rows[0];
+}
+
+/**
+ * Zet de status van een taak, bijvoorbeeld "wacht op iemand" zolang er een
+ * openstaande vraag is. De status staat in SQL, dus hij overleeft een herstart.
+ *
+ * De organisatiegrens zit in de `where` van de schrijfactie zelf, niet in een
+ * losse leesactie ervoor: zo kan de update nooit een taak van een andere
+ * organisatie raken. Geeft false terug wanneer er geen taak in deze
+ * organisatie is.
+ */
+export async function setTaskStatus(
+  taskId: string,
+  orgId: string,
+  status: string,
+  db: Pick<DbTransaction, "update" | "select"> = getDb(),
+): Promise<boolean> {
+  const rows = await db
+    .update(tasks)
+    .set({ status, updatedAt: Date.now() })
+    .where(
+      and(
+        eq(tasks.id, taskId),
+        inArray(
+          tasks.projectId,
+          db
+            .select({ id: projects.id })
+            .from(projects)
+            .where(eq(projects.organizationId, orgId)),
+        ),
+      ),
+    )
+    .returning({ id: tasks.id });
+
+  return rows.length > 0;
 }
 
 export async function createTaskEvent(

@@ -71,12 +71,16 @@ _Avoid_: pull request, wijzigingsverzoek
 ### Mens-agent interactie
 
 **Human task**:
-Een verzoek van een agent aan een persoon dat een antwoord vereist, waardoor de taak pauzeert.
+Een verzoek van een agent aan een persoon dat een antwoord vereist, waardoor de taak pauzeert. De vraag gaat alleen aan een lid van de organisatie en is altijd op te heffen, zodat een onbeantwoordbare vraag de taak nooit vasthoudt.
 _Avoid_: vraag, ticket, actie-item
 
 **Melding**:
 Een eenrichtingsbericht van een agent aan een persoon dat geen antwoord vereist en de taak niet pauzeert.
 _Avoid_: notify, alert, bericht
+
+**Herinnering**:
+Een bericht van een agent aan één persoon dat er een human task op hem of haar wacht; het komt per e-mail binnen. Het is geen melding: het vereist een antwoord en de taak pauzeert erdoor. De herinnering is een extra weg naar de vraag, niet de enige: de vraag staat in "Wacht op jou".
+_Avoid_: melding, notitie, pushbericht
 
 ### Documenten en log
 

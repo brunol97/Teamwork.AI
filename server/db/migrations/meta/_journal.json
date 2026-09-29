@@ -22,6 +22,20 @@
       "when": 1790656722622,
       "tag": "0002_fresh_bucky",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1790670570304,
+      "tag": "0003_cool_blur",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790676058010,
+      "tag": "0004_damp_loners",
+      "breakpoints": true
     }
   ]
 }
