@@ -1,0 +1,135 @@
+name: 🎬 E2E Recording
+
+# Records only the E2E specs that belong to this PR, and posts the recording on the
+# PR. Selection order:
+#   1. spec files added/changed in this PR
+#   2. the slice named in the branch, e.g. impl/t3-collaboration -> e2e/t3*.spec.ts
+#   3. everything, as a last resort
+# Older slices keep their own recordings on their own PRs instead of being re-recorded
+# on every later PR.
+#
+# GitHub cannot attach a video to a pull request directly, so the recording is stored
+# as a workflow artifact and the PR gets a link to it.
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: e2e-${{ github.head_ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  record:
+    name: Playwright (recorded)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Full history so the base...head diff is available for spec selection.
+          fetch-depth: 0
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Work out which specs this PR owns
+        id: specs
+        run: |
+          python3 .github/scripts/select-e2e-specs.py \
+            --base "${{ github.base_ref }}" \
+            --head "${{ github.head_ref }}" \
+            --out e2e-selection.json
+          cat e2e-selection.json
+
+      - name: Run the selected E2E specs with recording
+        run: |
+          SPECS=$(python3 -c "import json;print(' '.join(json.load(open('e2e-selection.json'))['specs']))")
+          echo "Running: $SPECS"
+          pnpm exec playwright test $SPECS
+
+      - name: Upload report and recordings
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-pr-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Post recording link on the PR
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const marker = '<!-- e2e-recording -->';
+            const selection = JSON.parse(fs.readFileSync('e2e-selection.json', 'utf8'));
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const prNumber = context.payload.pull_request.number;
+            const headSha = context.payload.pull_request.head.sha.slice(0, 7);
+
+            const { data: runs } = await github.rest.actions.listJobs({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: context.runId,
+            });
+            const failed = (runs.jobs || []).some((job) => job.conclusion && job.conclusion !== 'success');
+            const artifact = `e2e-pr-${prNumber}-${context.payload.pull_request.head.sha}`;
+
+            const body = [
+              marker,
+              '## 🎬 E2E opname',
+              '',
+              `Run voor \`${headSha}\`: ${failed ? '❌ **mislukt**' : '✅ **geslaagd**'}`,
+              '',
+              '**Opgenomen specs** (alleen de specs die bij deze PR horen):',
+              ...selection.specs.map((s) => `* \`${s}\``),
+              '',
+              `Geselecteerd via: _${selection.reason}_`,
+              '',
+              `**Opname en rapport:** [workflow run ${context.runId}](${runUrl})`,
+              '',
+              'Download de video: open de run hierboven → *Artifacts* → `' + artifact + '` → *Download ZIP*.',
+              'In de ZIP zit `test-results/**/*.webm` (video per test) en `playwright-report/index.html`.',
+              '',
+              '_(Artifacts worden na 14 dagen verwijderd. Oudere slices hebben hun eigen opname op hun eigen PR.)_',
+            ].join('\n');
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+            });
+            const existing = comments.find((c) => c.body && c.body.includes(marker));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                comment_id: existing.id, body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: prNumber, body,
+              });
+            }

@@ -1,4 +1,5 @@
 import { defineAppConfig } from "@agent-native/core/server";
+import { DEFAULT_OLLAMA_MODEL } from "../llm/ollama";
 
 export default defineAppConfig({
   app: {
@@ -9,7 +10,7 @@ export default defineAppConfig({
   },
   agent: {
     engine: "ai-sdk:ollama",
-    model: "llama3.2",
+    model: process.env.OLLAMA_MODEL ?? DEFAULT_OLLAMA_MODEL,
     builtInEngines: ["ai-sdk:ollama"],
   },
 });
