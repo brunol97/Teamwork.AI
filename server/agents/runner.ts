@@ -1,6 +1,7 @@
 import type { OllamaMessage } from "../llm/ollama.js";
 import { estimateCostCents } from "./cost.js";
 import type { AgentConfig } from "./store.js";
+import type { SkillContent } from "../skills/store.js";
 
 /**
  * De regels van een agentbeurt: de systeemprompt van een agent, het aanroepen
@@ -59,6 +60,7 @@ export function defaultSystemPrompt(taskTitle: string): string {
 export function buildAgentSystemPrompt(
   agent: AgentConfig,
   taskTitle: string,
+  skills?: SkillContent[],
 ): string {
   const lines = [
     `Je bent de agent "${agent.name}" in Agent Office en werkt mee aan de taak "${taskTitle}".`,
@@ -76,6 +78,17 @@ export function buildAgentSystemPrompt(
       agent.skills.length > 0 ? agent.skills.join(", ") : "geen"
     }.`,
   );
+  // Skills uit de bibliotheek van de organisatie gaan met hun volledige
+  // SKILL.md-inhoud mee, in de versie die op het moment van aanroepen actief
+  // is. Zo gebruikt een agent na een goedgekeurd voorstel meteen de nieuwe
+  // versie, zonder dat iemand hem hoeft bij te werken.
+  if (skills && skills.length > 0) {
+    lines.push("De volledige inhoud van je skills (actieve versie):");
+    for (const skill of skills) {
+      lines.push(`--- Skill: ${skill.name} (versie ${skill.version}) ---`);
+      lines.push(skill.content);
+    }
+  }
   lines.push(
     `Je kunt een deeltaak uitbesteden aan een andere agent: begin dan een regel met "${DELEGATION_PREFIX} @naam:" gevolgd door de opdracht.`,
   );
@@ -147,6 +160,7 @@ export async function runAgentTurn({
   messages,
   depth = 1,
   generate,
+  resolveSkills,
 }: {
   taskTitle: string;
   /** Alle agents van de organisatie, zodat de uitbesteding binnen de organisatie blijft. */
@@ -156,9 +170,16 @@ export async function runAgentTurn({
   messages: OllamaMessage[];
   depth?: number;
   generate: AgentGenerate;
+  /**
+   * Zet de skillnamen van de sprekende agent om naar de actieve inhoud, op
+   * het moment van aanroepen. Zo gebruikt de agent altijd de nieuwste
+   * goedgekeurde versie van elke skill.
+   */
+  resolveSkills?: (agent: AgentConfig) => Promise<SkillContent[]>;
 }): Promise<AgentTurnResult> {
+  const skills = agent && resolveSkills ? await resolveSkills(agent) : undefined;
   const system = agent
-    ? buildAgentSystemPrompt(agent, taskTitle)
+    ? buildAgentSystemPrompt(agent, taskTitle, skills)
     : defaultSystemPrompt(taskTitle);
   const reply = await generate(
     system,
@@ -209,6 +230,7 @@ export async function runAgentTurn({
     messages: [{ role: "user", content: delegation.opdracht }],
     depth: depth + 1,
     generate,
+    resolveSkills,
   });
 
   return {

@@ -231,6 +231,115 @@ export const humanTasks = table(
   ],
 );
 
+/**
+ * Skill: een herbruikbaar recept voor een soort taak in SKILL.md-formaat, met
+ * een menselijke eigenaar. De inhoud staat in `skill_versions`; de rij hier
+ * draagt welke versie actief is. Agents verwijzen naar een skill via zijn naam
+ * (`agents.skills`), de promptbouwer leest de actieve versie op aanroeptijd.
+ */
+export const skills = table(
+  "skills",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull(),
+    /** De naam waarmee een agent de skill in zijn lijst noemt; uniek per organisatie. */
+    name: text("name").notNull(),
+    description: text("description").notNull().default(""),
+    /** De menselijke eigenaar: alleen hij keurt voorstellen goed, past ze aan of wijst ze af. */
+    ownerId: text("owner_id").notNull(),
+    /** De versie die de agents gebruiken; oude versies blijven in `skill_versions` bewaard. */
+    currentVersion: integer("current_version").notNull().default(1),
+    createdBy: text("created_by").notNull(),
+    createdAt: bigint("created_at", { mode: "number" }).notNull(),
+    updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
+  },
+  (t) => [
+    index("skills_organization_id_idx").on(t.organizationId),
+    uniqueIndex("skills_organization_id_name_unique").on(t.organizationId, t.name),
+  ],
+);
+
+/**
+ * Eén versie van een skill. Versies worden nooit gewijzigd of verwijderd: een
+ * goedgekeurd voorstel voegt een nieuwe versie toe en zet `skills.current_version`
+ * op die versie, zodat de oude inhoud bewaard en leesbaar blijft.
+ */
+export const skillVersions = table(
+  "skill_versions",
+  {
+    id: text("id").primaryKey(),
+    skillId: text("skill_id").notNull(),
+    organizationId: text("organization_id").notNull(),
+    version: integer("version").notNull(),
+    content: text("content").notNull(),
+    createdBy: text("created_by").notNull(),
+    createdAt: bigint("created_at", { mode: "number" }).notNull(),
+  },
+  (t) => [
+    index("skill_versions_skill_id_idx").on(t.skillId),
+    uniqueIndex("skill_versions_skill_id_version_unique").on(t.skillId, t.version),
+  ],
+);
+
+/**
+ * Skill-voorstel: een door de agent voorgestelde wijziging aan een skill, die
+ * de eigenaar goedkeurt, aanpast of afwijst. De diff tegen de actieve versie
+ * wordt bij het voorstellen berekend en bewaard, zodat het voorstel later
+ * precies zo getoond wordt als de agent hem voorstelde.
+ */
+export const skillProposals = table(
+  "skill_proposals",
+  {
+    id: text("id").primaryKey(),
+    skillId: text("skill_id").notNull(),
+    organizationId: text("organization_id").notNull(),
+    /** De versie waar het voorstel op gebaseerd is op het moment van voorstellen. */
+    baseVersion: integer("base_version").notNull(),
+    /** Waarom deze wijziging de skill beter maakt. */
+    uitleg: text("uitleg").notNull(),
+    proposedContent: text("proposed_content").notNull(),
+    diff: text("diff").notNull(),
+    /** open, goedgekeurd of afgewezen. */
+    status: text("status").notNull().default("open"),
+    /** De agent die het voorstel deed. */
+    proposedBy: text("proposed_by").notNull(),
+    /** De inhoud zoals de eigenaar hem heeft aangepast; null bij een ongewijzigde goedkeuring. */
+    decidedContent: text("decided_content"),
+    decidedBy: text("decided_by"),
+    decidedAt: bigint("decided_at", { mode: "number" }),
+    createdAt: bigint("created_at", { mode: "number" }).notNull(),
+    updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
+  },
+  (t) => [
+    index("skill_proposals_skill_id_idx").on(t.skillId),
+    index("skill_proposals_organization_id_idx").on(t.organizationId),
+  ],
+);
+
+/**
+ * Evaluatie: de terugblik die een agent maakt bij het afronden van een taak,
+ * gericht op verbetering van skills. Elke afronding levert er precies één op;
+ * geeft de agent geen bruikbaar antwoord, dan staat er een terugval-evaluatie
+ * in (`fallback = 1`), zodat de afronding nooit zonder evaluatie eindigt.
+ */
+export const evaluations = table(
+  "evaluations",
+  {
+    id: text("id").primaryKey(),
+    taskId: text("task_id").notNull(),
+    organizationId: text("organization_id").notNull(),
+    /** De agent die de evaluatie schreef, of "systeem" bij de terugval. */
+    agentName: text("agent_name").notNull(),
+    content: text("content").notNull(),
+    fallback: integer("fallback").notNull().default(0),
+    createdAt: bigint("created_at", { mode: "number" }).notNull(),
+  },
+  (t) => [
+    index("evaluations_task_id_idx").on(t.taskId),
+    index("evaluations_organization_id_idx").on(t.organizationId),
+  ],
+);
+
 export const taskEvents = table(
   "task_events",
   {

@@ -2,10 +2,11 @@ import { defineAction, fail } from "@agent-native/core/action";
 import { z } from "zod";
 
 import { listOpenHumanTasks } from "../server/collaboration/human-tasks.js";
+import { listOpenProposalsForOwner } from "../server/skills/proposals.js";
 
 export default defineAction({
   description:
-    "List the open human tasks ('Wacht op jou') asked to the current person in the current organization, newest first. Each question shows what the agent wants, why, and the options.",
+    "List what waits on the current person in the current organization ('Wacht op jou'), newest first: the open human tasks the agent asked them (each with what, why and the options), and the open skill proposals for the skills they own (each with the explanation and the diff). A skill proposal is not a human task: it does not pause a task, but the owner must decide it here — goedkeuren, aanpassen or afwijzen via decide-skill-proposal.",
   schema: z.object({}),
   http: { method: "GET" },
   run: async (_args, ctx) => {
@@ -18,6 +19,9 @@ export default defineAction({
       });
     }
 
-    return { humanTasks: await listOpenHumanTasks(orgId, userEmail) };
+    return {
+      humanTasks: await listOpenHumanTasks(orgId, userEmail),
+      skillProposals: await listOpenProposalsForOwner(orgId, userEmail),
+    };
   },
 });

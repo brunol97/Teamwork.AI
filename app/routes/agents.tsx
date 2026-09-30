@@ -25,6 +25,15 @@ type Agent = {
   template: string | null;
 };
 
+type Skill = {
+  id: string;
+  name: string;
+  description: string;
+  ownerId: string;
+  currentVersion: number;
+  currentContent: string;
+};
+
 /**
  * Agents zijn bronnen van de organisatie: een nieuwe agent is meteen
  * beschikbaar in alle taken. Hier maak je ze vanuit een sjabloon of leeg,
@@ -50,6 +59,21 @@ export default function AgentsRoute() {
   const [skills, setSkills] = useState("");
   const [sjabloon, setSjabloon] = useState("leeg");
   const [fout, setFout] = useState<string | null>(null);
+
+  // Skills: de bibliotheek waar agents naar verwijzen en waarvoor de agent
+  // bij het afronden voorstellen doet.
+  const { data: skillsData, refetch: refetchSkills } = useActionQuery(
+    "list-skills",
+    {},
+  );
+  const bestaandeSkills: Skill[] =
+    (skillsData as { skills?: Skill[] } | undefined)?.skills ?? [];
+  const [skillNaam, setSkillNaam] = useState("");
+  const [skillOmschrijving, setSkillOmschrijving] = useState("");
+  const [skillInhoud, setSkillInhoud] = useState("");
+  const { mutate: maakSkill, isPending: maaktSkill } =
+    useActionMutation("create-skill");
+  const [skillFout, setSkillFout] = useState<string | null>(null);
 
   // Testpaneel: welk agent en op welke taak.
   const [testAgentId, setTestAgentId] = useState<string | null>(null);
@@ -137,6 +161,31 @@ export default function AgentsRoute() {
 
   const gekozenAgent = agents.find((agent) => agent.id === testAgentId);
 
+  const maakSkillAan = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!skillNaam.trim() || !skillInhoud.trim()) return;
+    setSkillFout(null);
+    maakSkill(
+      {
+        name: skillNaam.trim(),
+        description: skillOmschrijving.trim(),
+        content: skillInhoud,
+      },
+      {
+        onSuccess: () => {
+          setSkillNaam("");
+          setSkillOmschrijving("");
+          setSkillInhoud("");
+          refetchSkills();
+        },
+        onError: (error) =>
+          setSkillFout(
+            userFacingActionError(error, "Aanmaken mislukt. Probeer het opnieuw."),
+          ),
+      },
+    );
+  };
+
   return (
     <div className="mx-auto max-w-3xl p-6">
       <h1 className="mb-2 text-2xl font-semibold">Agents</h1>
@@ -217,7 +266,13 @@ export default function AgentsRoute() {
               value={skills}
               onChange={(e) => setSkills(e.target.value)}
               placeholder="Bijv. notuleren"
+              list="org-skills"
             />
+            <datalist id="org-skills">
+              {bestaandeSkills.map((skill) => (
+                <option key={skill.id} value={skill.name} />
+              ))}
+            </datalist>
           </div>
         </div>
         <Button type="submit" disabled={isCreating} data-testid="agent-maken">
@@ -290,6 +345,97 @@ export default function AgentsRoute() {
           ))}
         </ul>
       )}
+
+      <section className="mb-8 rounded-lg border p-4">
+        <h2 className="mb-1 font-medium">Skills</h2>
+        <p className="mb-3 text-sm text-muted-foreground">
+          Een skill is een herbruikbaar recept in SKILL.md-formaat met een
+          menselijke eigenaar. Agents verwijzen ernaar via de naam en gebruiken
+          de actieve versie. Bij het afronden van een taak stelt de agent
+          wijzigingen voor; die verschijnen in "Wacht op jou" van de eigenaar.
+        </p>
+        {skillFout ? (
+          <div
+            role="alert"
+            data-testid="skills-fout"
+            className="mb-3 rounded-md border p-2 text-sm"
+          >
+            {skillFout}
+          </div>
+        ) : null}
+        <form onSubmit={maakSkillAan} className="mb-4 space-y-3">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <Label htmlFor="skill-naam">Naam</Label>
+              <Input
+                id="skill-naam"
+                data-testid="skill-naam"
+                value={skillNaam}
+                onChange={(e) => setSkillNaam(e.target.value)}
+                placeholder="Bijv. Notuleren"
+                required
+              />
+            </div>
+            <div>
+              <Label htmlFor="skill-omschrijving">Omschrijving</Label>
+              <Input
+                id="skill-omschrijving"
+                data-testid="skill-omschrijving"
+                value={skillOmschrijving}
+                onChange={(e) => setSkillOmschrijving(e.target.value)}
+                placeholder="Waarvoor is deze skill er?"
+              />
+            </div>
+          </div>
+          <div>
+            <Label htmlFor="skill-inhoud">SKILL.md-inhoud</Label>
+            <textarea
+              id="skill-inhoud"
+              data-testid="skill-inhoud"
+              value={skillInhoud}
+              onChange={(e) => setSkillInhoud(e.target.value)}
+              rows={6}
+              placeholder="# Notuleren\n\nHoud notulen bij van elke besluitvorming."
+              className="w-full rounded-md border bg-transparent p-2 font-mono text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              required
+            />
+          </div>
+          <Button type="submit" disabled={maaktSkill} data-testid="skill-maken">
+            {maaktSkill ? "Bezig..." : "Skill maken"}
+          </Button>
+        </form>
+        {bestaandeSkills.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            Nog geen skills. Maak er hierboven een.
+          </p>
+        ) : (
+          <ul className="space-y-2" data-testid="skills-lijst">
+            {bestaandeSkills.map((skill) => (
+              <li key={skill.id} className="rounded-md border p-3">
+                <div className="text-sm font-medium">
+                  {skill.name}
+                  <span className="ml-2 text-xs text-muted-foreground">
+                    versie {skill.currentVersion} · eigenaar: {skill.ownerId}
+                  </span>
+                </div>
+                {skill.description ? (
+                  <div className="text-xs text-muted-foreground">
+                    {skill.description}
+                  </div>
+                ) : null}
+                <details className="mt-1">
+                  <summary className="cursor-pointer text-xs text-muted-foreground">
+                    Actieve inhoud bekijken
+                  </summary>
+                  <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap rounded bg-muted p-2 text-xs">
+                    {skill.currentContent}
+                  </pre>
+                </details>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       <section className="rounded-lg border p-4">
         <h2 className="mb-1 font-medium">Agent testen</h2>
