@@ -15,7 +15,7 @@ import {
   saveWorkDocument,
 } from "../../server/documents/store.js";
 import { generateOllamaResponse } from "../../server/llm/ollama.js";
-import { getTask, listTaskEvents } from "../../server/tasks/store.js";
+import { createTask, getTask, listTaskEvents } from "../../server/tasks/store.js";
 import {
   createSamenwerking,
   createTaak,
@@ -399,7 +399,15 @@ describe("de agent zoekt voordat hij vraagt", () => {
   it("negeert een beantwoorde vraag uit een ander project", async () => {
     const { orgId, lead, collega } = await createSamenwerking();
     const eersteTask = await createTaak(orgId, lead);
-    const tweedeTask = await createTaak(orgId, lead);
+    // Met dezelfde projectnaam hoort de taak bij het bestaande project
+    // (het overzicht telt per project); een andere naam geeft dus een ander
+    // project, en dat is wat deze test nodig heeft.
+    const tweedeTask = await createTask({
+      orgId,
+      leadId: lead,
+      projectName: "Ander project",
+      taskTitle: "Datamigratie",
+    });
     expect(tweedeTask.projectId).not.toBe(eersteTask.projectId);
 
     const { humanTask } = await askHumanTaskAction.run(

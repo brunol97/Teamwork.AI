@@ -7,6 +7,26 @@ import {
   uniqueIndex,
 } from "@agent-native/core/db/schema";
 
+/**
+ * App-eigen metadata van een organisatie. De organisatierij zelf is van het
+ * framework; hier staat alleen hoe de app de organisatie presenteert: als
+ * persoonlijke werkruimte (isPersonal = 1) of als team (isPersonal = 0).
+ * Omzetten van persoonlijk naar team is dus een vlagverandering — de taken,
+ * projecten, klanten, agents en skills van de organisatie raken niets kwijt.
+ */
+export const organizationSettings = table(
+  "organization_settings",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().unique(),
+    /** 1 = persoonlijke werkruimte, 0 = team. */
+    isPersonal: integer("is_personal").notNull().default(1),
+    createdAt: bigint("created_at", { mode: "number" }).notNull(),
+    updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
+  },
+  (t) => [index("organization_settings_organization_id_idx").on(t.organizationId)],
+);
+
 export const customers = table(
   "customers",
   {
