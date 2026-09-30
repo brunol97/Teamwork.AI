@@ -241,6 +241,7 @@ When adding app data, define tables with `@agent-native/core/db/schema` helpers 
 | --------------- | ---------------------------- | ----------------------------------------------------------------------------- |
 | `DATABASE_URL`  | Production yes, local dev no | PostgreSQL or PGlite database URL (local dev default: `pglite:./data/pglite`) |
 | `AUTH_DISABLED` | Optional                     | Set to `true` or `1` to skip login/signup (local dev/preview only)            |
+| `AUTH_ALLOWED_EMAILS` | Optional                | Komma-gescheiden e-mailallowlist. Zonder waarde geldt `bruno.lenderink@gmail.com`: alleen dat adres kan zich aanmelden en een sessie houden (zie `server/auth/allowlist.ts`). |
 
 ## Deploy Flow
 
