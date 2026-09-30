@@ -36,6 +36,14 @@ export default function TasksRoute() {
       <h1 className="mb-6 text-2xl font-semibold">Taken</h1>
 
       <p className="mb-6 text-sm text-muted-foreground">
+        <Link to="/overzicht" className="underline" data-testid="overzicht-link">
+          Overzicht
+        </Link>{" "}
+        ·{" "}
+        <Link to="/organisatie" className="underline" data-testid="organisatie-link">
+          Organisatie
+        </Link>{" "}
+        — soort, rollen, uitnodigingen en klanten.{" "}
         <a href="/agents" className="underline" data-testid="agents-beheren-link">
           Agents beheren
         </a>{" "}

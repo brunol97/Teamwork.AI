@@ -3,7 +3,7 @@ import { invalidateMemberOrgCaches, orgInvitations } from "@agent-native/core/or
 import { randomBytes, randomUUID } from "node:crypto";
 
 import { getDb } from "../db/client.js";
-import { taskInvites } from "../db/schema.js";
+import { taskInvites, tasks } from "../db/schema.js";
 import { getTask } from "../tasks/store.js";
 
 /** Status van een uitnodigingslink zoals de beheerder hem kan intrekken. */
@@ -319,4 +319,27 @@ export async function markInviteAccepted(token: string): Promise<void> {
     .update(taskInvites)
     .set({ acceptedAt: Date.now() })
     .where(eq(taskInvites.token, token));
+}
+
+/** Geeft alle links van de hele organisatie terug, nieuwste eerst, met de taaktitel erbij. */
+export async function listAllTaskInvites(
+  orgId: string,
+  now: number = Date.now(),
+): Promise<(TaskInvite & { state: InviteLinkState; taskTitle: string | null })[]> {
+  const db = getDb();
+  const rows = await db
+    .select({ invite: taskInvites, taskTitle: tasks.title })
+    .from(taskInvites)
+    .leftJoin(tasks, eq(taskInvites.taskId, tasks.id))
+    .where(eq(taskInvites.organizationId, orgId))
+    .orderBy(desc(taskInvites.createdAt));
+
+  return rows.map((row) => {
+    const invite = toTaskInvite(row.invite);
+    return {
+      ...invite,
+      state: resolveInviteLinkState(invite, now),
+      taskTitle: row.taskTitle ?? null,
+    };
+  });
 }

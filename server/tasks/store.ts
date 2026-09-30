@@ -9,6 +9,8 @@ export interface CreateTaskInput {
   leadId: string;
   projectName: string;
   taskTitle: string;
+  /** De klant waar het nieuwe project onder staat; zonder klant staat het project direct onder de organisatie. */
+  customerId?: string | null;
 }
 
 export interface TaskWithProject {
@@ -36,25 +38,53 @@ export interface TaskEvent {
   createdAt: number;
 }
 
+/**
+ * Maakt een taak aan. Het project ontstaat mee, tenzij de organisatie al een
+ * niet-gearchiveerd project met dezelfde naam heeft: dan hoort de nieuwe taak
+ * bij dat bestaande project, zodat het overzicht per project zinvol kan tellen
+ * (klanten zijn optioneel: een project staat direct onder de organisatie of
+ * onder een klant).
+ */
 export async function createTask({
   orgId,
   leadId,
   projectName,
   taskTitle,
+  customerId = null,
 }: CreateTaskInput): Promise<TaskWithProject> {
   const db = getDb();
   const now = Date.now();
-  const projectId = randomUUID();
   const taskId = randomUUID();
 
-  await db.insert(projects).values({
-    id: projectId,
-    organizationId: orgId,
-    name: projectName,
-    archived: 0,
-    createdAt: now,
-    updatedAt: now,
-  });
+  // Bestaand project met dezelfde naam hergebruiken; zonder customerId blijft
+  // de klant van het bestaande project staan.
+  const bestaande = await db
+    .select({ id: projects.id, customerId: projects.customerId })
+    .from(projects)
+    .where(
+      and(
+        eq(projects.organizationId, orgId),
+        eq(projects.name, projectName),
+        eq(projects.archived, 0),
+      ),
+    )
+    .limit(1);
+
+  let projectId: string;
+  if (bestaande[0]) {
+    projectId = bestaande[0].id;
+  } else {
+    projectId = randomUUID();
+    await db.insert(projects).values({
+      id: projectId,
+      organizationId: orgId,
+      customerId,
+      name: projectName,
+      archived: 0,
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
 
   await db.insert(tasks).values({
     id: taskId,

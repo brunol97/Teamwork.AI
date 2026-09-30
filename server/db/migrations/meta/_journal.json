@@ -57,6 +57,13 @@
       "when": 1790707750342,
       "tag": "0007_broken_tigra",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1790743473993,
+      "tag": "0008_t9_organization_settings",
+      "breakpoints": true
     }
   ]
 }

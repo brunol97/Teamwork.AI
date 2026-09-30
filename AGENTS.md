@@ -21,11 +21,16 @@ Single-context repo: one `CONTEXT.md` at the repo root and system-wide ADRs in `
 | `get-agent` | User or agent reads one agent | `id` | `{ agent }` |
 | `update-agent` | User edits an agent (name, description, model, tools, skills, enabled) | `id` plus the fields to change | `{ agent }` |
 | `delete-agent` | User removes an agent | `id` | `{ deleted }` |
+| `archive-klant` | User archives a klant of the organization | `id` | `{ id, name, archived }`; the klant stays readable and his projects keep working |
+| `convert-to-team` | User converts the current persoonlijke werkruimte into a team | — | `{ organizationId, soort: "team", wasSoort: "persoonlijk", takenAantal }`; a metadata change only, nothing is lost; refused when already a team (`already_a_team`) |
+| `create-klant` | User creates a klant (client) of the organization | `naam` | `{ id, name, archived: false }`; klanten are optional: a project lives directly under the organization or under a klant |
+| `create-organisatie` | New user starts a persoonlijke werkruimte or a team from the onboarding choice screen | `soort` ("persoonlijk"\|"team"), `naam` (optional) | `{ organizationId, naam, soort }`; the organization and membership are created by the framework and the new organization becomes active |
 | `set-task-agent` | User switches the actieve agent of a task (wisselen) | `taskId`, `agentId` (optional; without it the default agent returns) | `{ taskId, agentId, agentName }`; the wissel finalises an overdrachtsnotitie in the log |
 | `pause-task` | Lead pauzeert de taak | `taskId` | `{ taskId, status, notitie }`; an overdrachtsnotitie draft is created automatically and stays editable; refused unless the task is `bezig` and the caller is the lead |
 | `resume-task` | Iedereen in de organisatie hervat een gepauzeerde taak | `taskId` | `{ taskId, status, hervatDoor }`; the task returns to `bezig` and the next agent turn carries the full context including the notitie |
 | `transfer-task` | Lead draagt de taak over aan een collega | `taskId`, `newLeadId` | `{ taskId, previousLeadId, newLeadId, notitie }`; the overdrachtsnotitie is finalized immutably into the activity log and the new lead gets a melding containing it |
 | `get-overdracht-note` | User or agent reads the overdrachtsnotitie of a task | `taskId` | `{ taskId, note }`; the open draft while there is one, otherwise the most recently finalized note |
+| `get-overzicht` | User or agent reads the overview of the organization | — | `{ aangeroepenDoor, projecten }` with per project the counts per status (bezig, wacht op iemand, gepauzeerd, klaar), plus `{ taken }` each with `wachtOpMij` and `wachtOpIemand`, and `wachtOpMijAantal` |
 | `update-overdracht-note` | Lead edits the open draft overdrachtsnotitie | `taskId`, `content` | `{ taskId, note }`; a finalized note is immutable and refuses edits (`already_finalized`) |
 | `create-task` | User wants a new project + task | `projectName`, `taskTitle` | Task object with `id`, `title`, `status`, `leadId`, `projectId`, `projectName` |
 | `list-tasks` | User asks what tasks exist | — | Array of tasks in the current organization |
@@ -42,8 +47,12 @@ Single-context repo: one `CONTEXT.md` at the repo root and system-wide ADRs in `
 | `reorder-tracer-slices` | User puts the slices in a new order | `taskId`, `orderedIds` | `{ taskId, slices }` in the new order; the order is persisted |
 | `merge-tracer-slices` | User merges a slice with the next one | `taskId`, `sliceId` | `{ taskId, slices }` with the merged slice |
 | `split-tracer-slice` | User splits a slice between two criteria | `taskId`, `sliceId`, `afterCriteria` | `{ taskId, slices }` with the two new slices |
+| `switch-organisatie` | User switches the active organization | `orgId` | `{ organizationId, soort }`; refused unless the caller is a member (`not_a_member`), checked against the framework's membership list |
 | `create-invite-link` | Beheerder wants to invite a second person to a task | `taskId`, `expiresInHours`, `invitedEmail` | `{ invite, orgInvitation, links }` with the token of the link |
 | `list-invite-links` | Beheerder wants to see the links of a task | `taskId` | `{ links }` with state `geldig`, `verlopen` or `ingetrokken` |
+| `list-alle-invite-links` | Beheerder wants to see every uitnodigingslink of the organization | — | `{ links }` each with state `geldig`, `verlopen` or `ingetrokken`, the invited email and the task; beheerder-only |
+| `list-klanten` | User or agent lists the klanten of the organization | — | `{ klanten }` with name and archived |
+| `list-mijn-organisaties` | User or agent lists the organizations the caller is a member of | — | `{ actieveOrganisatieId, organisaties }` each with naam, rol and soort (persoonlijk or team), read from the framework's own membership list |
 | `revoke-invite-link` | Beheerder wants to withdraw a link | `inviteId` | `{ invite }` |
 | `get-invite-link` | Someone opens an invitation link | `token` | `{ state, melding, taskId, taskTitle }` |
 | `accept-invite-link` | Someone uses a valid invitation link | `token` | `{ organizationId, taskId, redirect }`; a verlopen of ingetrokken link fails with the Dutch message |
@@ -71,6 +80,14 @@ Single-context repo: one `CONTEXT.md` at the repo root and system-wide ADRs in `
 | `navigate` | Open a route in the UI | `path` | — |
 
 Task actions are scoped to the caller's organization. A user from another organization cannot see or modify tasks outside their organization.
+
+## Organisaties, rollen en klanten
+
+- **Onboarding met drie keuzes** (`/onboarding`): een **persoonlijke werkruimte** starten, een **team** starten, of deelnemen via een uitnodigingslink. De eerste twee maken de organisatie via het framework zelf aan (`create-organisatie` roept de frameworkfunctie aan en maakt hem actief); de soort (persoonlijk of team) is app-eigen metadata in `organization_settings`.
+- **Lid zijn van meerdere organisaties.** `list-mijn-organisaties` leest de ledenlijst van het framework (alleen lezend) en `switch-organisatie` wisselt alleen naar een organisatie waar de aanroeper echt lid van is; het actief zetten gaat via de frameworkfunctie. De OrgSwitcher in de zijbalk (van het framework) biedt hetzelfde voor mensen.
+- **De ledenlijst is van het framework.** De app leest `org_members` en `org_invitations` alleen (`list-org-members`, `list-mijn-organisaties`, de framework-hook `useOrgInvitations`) en schrijft ze nooit. Rollen wijzigen kan via de framework-instellingen; die weigeren zelf het demoten of verwijderen van de eigenaar, zodat **de laatste beheerder niet kan vertrekken of zijn rol verliezen** en er altijd minstens één beheerder overblijft. De app heeft geen eigen rol-mutatie.
+- **Een persoonlijke werkruimte wordt een team zonder dataverlies** (`convert-to-team`): alleen een vlagverandering in `organization_settings`; taken, projecten, klanten, agents en skills blijven precies staan. Een team kan niet terug naar persoonlijk.
+- **Klanten zijn optioneel.** Een project staat direct onder de organisatie of onder een klant (`create-task` met `klantId`; bij dezelfde projectnaam wordt het bestaande project hergebruikt). `get-overzicht` toont per project de klant en het aantal taken per status; "Wacht op mij" filtert op de openstaande vragen die de agent aan jou stelde.
 
 ## Samenwerken
 
