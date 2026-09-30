@@ -42,6 +42,10 @@ configureTracking({
     app: "agent-native-chat",
     template: "chat",
   }),
+  // Session replay was missing during the 29–30 Sep sign-in outage, so there
+  // was no direct UX evidence of what users saw. Inputs are masked; request
+  // bodies are never captured by the framework's network hook.
+  sessionReplay: { maskAllInputs: true },
 });
 
 export const links: LinksFunction = () => [
