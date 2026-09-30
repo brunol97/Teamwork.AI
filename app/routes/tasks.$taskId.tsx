@@ -6,6 +6,7 @@ import { FollowTaskButton, MeldingenPanel } from "@/components/task/MeldingenPan
 import { HumanTaskPanel } from "@/components/task/HumanTaskPanel";
 import { InviteLinkPanel } from "@/components/task/InviteLinkPanel";
 import { PresenceBar } from "@/components/task/PresenceBar";
+import { TracerSlicesPanel } from "@/components/task/TracerSlicesPanel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -197,6 +198,7 @@ export default function TaskDetailRoute() {
 
         <section className="flex min-h-0 flex-col gap-3">
           <HumanTaskPanel taskId={task.id} />
+          <TracerSlicesPanel taskId={task.id} />
           <div className="min-h-0 flex-1 space-y-3 overflow-y-auto rounded-lg border p-4">
             {events.length === 0 ? (
               <p className="text-muted-foreground">
