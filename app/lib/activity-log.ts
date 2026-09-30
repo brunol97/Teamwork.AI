@@ -2,6 +2,8 @@ export type ActivityEvent = {
   id: string;
   type: string;
   actorType: string;
+  /** De naam van de agent die sprak, of de e-mail van de gebruiker. */
+  actorId?: string | null;
   data: string | null;
 };
 
@@ -36,10 +38,25 @@ export function describeEvent(event: ActivityEvent): {
 } {
   const actor =
     event.actorType === "agent"
-      ? "Agent"
+      ? event.actorId && event.actorId !== "ollama"
+        ? `Agent ${event.actorId}`
+        : "Agent"
       : event.actorType === "system"
         ? "Systeem"
         : "Jij";
+
+  if (event.type === "agent_changed") {
+    return { actor, text: `De actieve agent is nu ${event.data}.` };
+  }
+  if (event.type === "agent_delegated") {
+    return { actor, text: `Uitbesteed aan ${event.data}.` };
+  }
+  if (event.type === "delegation_refused") {
+    return { actor, text: event.data ?? "Uitbesteden is geweigerd." };
+  }
+  if (event.type === "budget_gepauzeerd") {
+    return { actor, text: event.data ?? "De taak is gepauzeerd." };
+  }
 
   if (event.type === "document_section_added") {
     return {

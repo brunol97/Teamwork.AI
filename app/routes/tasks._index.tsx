@@ -35,6 +35,13 @@ export default function TasksRoute() {
     <div className="mx-auto max-w-2xl p-6">
       <h1 className="mb-6 text-2xl font-semibold">Taken</h1>
 
+      <p className="mb-6 text-sm text-muted-foreground">
+        <a href="/agents" className="underline" data-testid="agents-beheren-link">
+          Agents beheren
+        </a>{" "}
+        — maak agents vanuit een sjabloon of leeg, en test ze.
+      </p>
+
       {/* "Wacht op jou" staat hier zodat iemand die elders gevraagd is de vraag
           ziet zonder eerst de taakpagina te openen. */}
       <div className="mb-6">

@@ -1,6 +1,8 @@
 import { defineAction, fail } from "@agent-native/core/action";
 import { z } from "zod";
 
+import { parseMention, runAgentTurn } from "../server/agents/runner.js";
+import { listAgents, type AgentConfig } from "../server/agents/store.js";
 import { parseSectionRequest } from "../server/documents/markdown.js";
 import {
   addWorkDocumentSection,
@@ -14,22 +16,30 @@ import {
   planSlicesFromRequirements,
 } from "../server/documents/slices.js";
 import { writeTracerSlices } from "../server/documents/slice-store.js";
-import { notifyTaskFollowers } from "../server/collaboration/notifications.js";
+import { createMelding, notifyTaskFollowers } from "../server/collaboration/notifications.js";
 import { generateOllamaResponse } from "../server/llm/ollama.js";
 import {
+  addTaskCost,
   createTaskEvent,
   getTask,
   listTaskEvents,
+  TASK_STATUS_PAUSED,
 } from "../server/tasks/store.js";
 
 export default defineAction({
   description:
-    "Send a message in a task and let the Ollama agent respond. Both messages are recorded in the activity log, and every volger of the task gets a melding. When the user asks for a section ('schrijf een sectie over X'), the agent's answer is also added to the werkdocument of the task as a new section. When the user asks for tracer-slices ('maak tracer-slices'), the slice planner answers with slices in the fixed template and adds them as a Tracer-slices section to the werkdocument, referencing only requirements that exist in the document.",
+    "Send a message in a task and let the actieve agent respond. The agent is chosen in this order: the explicit agentId, an @naam mention in the message, the actieve agent of the task, otherwise the default agent. An agent can uitbesteden to another agent of the organization (delegatiediepte maximaal 2) and only ever runs with its own tools. Both messages are recorded in the activity log, and every volger of the task gets a melding. When the user asks for a section ('schrijf een sectie over X'), the agent's answer is also added to the werkdocument of the task as a new section. When the user asks for tracer-slices ('maak tracer-slices'), the slice planner answers with slices in the fixed template and adds them as a Tracer-slices section to the werkdocument, referencing only requirements that exist in the document. Agent costs are added to the task; at €10 the task pauses and the lead gets a melding.",
   schema: z.object({
     taskId: z.string().min(1).describe("Task id"),
     message: z.string().min(1).describe("Message to send to the agent"),
+    agentId: z
+      .string()
+      .optional()
+      .describe(
+        "Agent that answers this message; leave out to use the @naam mention, the actieve agent of the task, or the default agent",
+      ),
   }),
-  run: async ({ taskId, message }, ctx) => {
+  run: async ({ taskId, message, agentId }, ctx) => {
     const userEmail = ctx?.userEmail;
     const orgId = ctx?.orgId;
     if (!userEmail || !orgId) {
@@ -47,7 +57,53 @@ export default defineAction({
       });
     }
 
+    if (task.status === TASK_STATUS_PAUSED) {
+      fail(
+        "De taak is gepauzeerd omdat het agentbudget van €10 is bereikt. De lead heeft een melding gekregen.",
+        {
+          errorCode: "task_gepauzeerd",
+          statusCode: 409,
+        },
+      );
+    }
+
     await createTaskEvent(taskId, "user", userEmail, "message", message);
+
+    // Bepaal wie er spreekt: de expliciet gevraagde agent, de @naam-aanroep in
+    // het bericht, de actieve agent van de taak, of de standaardagent.
+    const orgAgents = await listAgents(orgId);
+    let agent: AgentConfig | null = null;
+
+    if (agentId) {
+      const gevraagd = orgAgents.find((candidate) => candidate.id === agentId);
+      if (!gevraagd) {
+        fail("Agent not found.", {
+          errorCode: "not_found",
+          statusCode: 404,
+        });
+      }
+      if (!gevraagd.enabled) {
+        fail(
+          `De agent "${gevraagd.name}" is uitgeschakeld en kan geen berichten ontvangen.`,
+          {
+            errorCode: "agent_disabled",
+            statusCode: 409,
+          },
+        );
+      }
+      agent = gevraagd;
+    }
+    if (!agent) {
+      agent = parseMention(message, orgAgents);
+    }
+    if (!agent && task.activeAgentId) {
+      const actief = orgAgents.find(
+        (candidate) => candidate.id === task.activeAgentId && candidate.enabled,
+      );
+      if (actief) {
+        agent = actief;
+      }
+    }
 
     const history = await listTaskEvents(taskId, orgId);
     const messages = history
@@ -58,19 +114,63 @@ export default defineAction({
         content: event.data ?? "",
       }));
 
-    const systemPrompt = `Je bent een behulpzame agent in Agent Office. Je werkt mee aan de taak "${task.title}". Reageer in het Nederlands tenzij de gebruiker anders vraagt. Houd antwoorden kort en bondig.`;
+    const turn = await runAgentTurn({
+      taskTitle: task.title,
+      agents: orgAgents,
+      agent,
+      messages,
+      generate: generateOllamaResponse,
+    });
 
-    const response = await generateOllamaResponse(systemPrompt, messages);
+    // Een geweigerde uitbesteding hoort bij het antwoord in het gesprek, zodat
+    // de aanroeper de duidelijke melding ook zonder het activiteitenlog ziet.
+    const reply = turn.refusal ? `${turn.reply}\n\n${turn.refusal}` : turn.reply;
 
-    await createTaskEvent(taskId, "agent", "ollama", "message", response);
+    await createTaskEvent(taskId, "agent", agent?.name ?? "ollama", "message", reply);
+
+    if (turn.delegation?.ok) {
+      await createTaskEvent(
+        taskId,
+        "system",
+        agent?.name ?? "ollama",
+        "agent_delegated",
+        `@${turn.delegation.name}`,
+      );
+    }
+    if (turn.refusal) {
+      await createTaskEvent(
+        taskId,
+        "system",
+        agent?.name ?? "ollama",
+        "delegation_refused",
+        turn.refusal,
+      );
+    }
 
     // Volgers van de taak krijgen een melding; die vraagt geen antwoord.
     await notifyTaskFollowers({
       taskId,
       orgId,
       title: `Antwoord van de agent in ${task.title}`,
-      body: response,
+      body: reply,
     });
+
+    // De agentkosten komen op de taak; bij de grens van €10 pauzeert de taak
+    // en krijgt de lead een melding.
+    const kosten = await addTaskCost({ taskId, orgId, cents: turn.costCents });
+    let gepauzeerd = false;
+    if (kosten.gepauzeerd) {
+      gepauzeerd = true;
+      const melding = `De taak "${task.title}" is gepauzeerd omdat het agentbudget van €10 is bereikt.`;
+      await createMelding({
+        taskId,
+        orgId,
+        recipientId: task.leadId,
+        title: `Taak "${task.title}" is gepauzeerd`,
+        body: melding,
+      });
+      await createTaskEvent(taskId, "system", "agent", "budget_gepauzeerd", melding);
+    }
 
     const sliceRequest = parseSliceRequest(message);
     const sectionRequest = sliceRequest ? null : parseSectionRequest(message);
@@ -80,7 +180,7 @@ export default defineAction({
       documentSection = await planTracerSlices({
         taskId,
         orgId,
-        response,
+        response: reply,
       }).catch((error) => {
         if (error instanceof WorkDocumentConflictError) {
           fail(error.message, {
@@ -101,9 +201,9 @@ export default defineAction({
           taskId,
           orgId,
           title: sectionRequest.title,
-          body: response,
+          body: reply,
           actorType: "agent",
-          actorId: "ollama",
+          actorId: agent?.name ?? "ollama",
         });
         documentSection = { title: sectionRequest.title };
       } catch (error) {
@@ -121,8 +221,10 @@ export default defineAction({
     return {
       taskId,
       userMessage: message,
-      agentMessage: response,
+      agentMessage: reply,
+      agentName: agent?.name ?? null,
       documentSection,
+      gepauzeerd,
     };
   },
 });

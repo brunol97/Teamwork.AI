@@ -154,6 +154,44 @@ export const taskNotifications = table(
 );
 
 /**
+ * Agent: een AI-rol met naam, omschrijving, model, tools en skills, beschikbaar in
+ * alle taken van de organisatie. Een agent is dus een bron van de organisatie, niet
+ * van één taak; de actieve agent van een taak staat op de taak zelf
+ * (`tasks.active_agent_id`).
+ *
+ * Rechten stapelen niet: een agent krijgt bij zijn beurten alleen de tools die hij
+ * zelf heeft. Besteedt hij werk uit aan een andere agent, dan draait die andere
+ * agent met alleen zijn eigen tools, nooit met de vereniging van beide.
+ */
+export const agents = table(
+  "agents",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull(),
+    /** De naam waarmee de agent met @naam aangeroepen wordt; uniek binnen de organisatie. */
+    name: text("name").notNull(),
+    description: text("description").notNull().default(""),
+    /** Het Ollama-model van deze agent; null betekent het standaardmodel van de omgeving. */
+    model: text("model"),
+    /** De tools van deze agent, als JSON-array van namen. */
+    tools: text("tools").notNull().default("[]"),
+    /** De skills van deze agent, als JSON-array van namen. */
+    skills: text("skills").notNull().default("[]"),
+    /** Een uitgeschakelde agent krijgt geen beurten en wordt niet aangeroepen. */
+    enabled: integer("enabled").notNull().default(1),
+    /** Het sjabloon waaruit de agent is gemaakt, of "leeg". */
+    template: text("template"),
+    createdBy: text("created_by").notNull(),
+    createdAt: bigint("created_at", { mode: "number" }).notNull(),
+    updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
+  },
+  (t) => [
+    index("agents_organization_id_idx").on(t.organizationId),
+    uniqueIndex("agents_organization_id_name_unique").on(t.organizationId, t.name),
+  ],
+);
+
+/**
  * Human task: een verzoek van de agent aan een specifieke persoon dat een antwoord
  * vereist, waardoor de taak pauzeert. De drie velden `question` (wat), `reason`
  * (waarom) en `options` zijn alle drie verplicht; een vraag zonder waarom is geen
