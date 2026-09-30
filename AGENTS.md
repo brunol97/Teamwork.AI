@@ -16,6 +16,12 @@ Single-context repo: one `CONTEXT.md` at the repo root and system-wide ADRs in `
 
 | Action | When to use | Key arguments | Returns |
 |--------|-------------|---------------|---------|
+| `create-agent` | User creates an agent from a template or empty, with an Ollama model, tools and skills | `name`, `description` (optional), `model` (optional), `tools` (optional), `skills` (optional), `template` (optional) | `{ agent }`; the agent is immediately available in all tasks of the organization |
+| `list-agents` | User or agent lists the agents of the organization | — | `{ agents }` with name, description, model, tools, skills, enabled |
+| `get-agent` | User or agent reads one agent | `id` | `{ agent }` |
+| `update-agent` | User edits an agent (name, description, model, tools, skills, enabled) | `id` plus the fields to change | `{ agent }` |
+| `delete-agent` | User removes an agent | `id` | `{ deleted }` |
+| `set-task-agent` | User switches the actieve agent of a task (wisselen) | `taskId`, `agentId` (optional; without it the default agent returns) | `{ taskId, agentId, agentName }` |
 | `create-task` | User wants a new project + task | `projectName`, `taskTitle` | Task object with `id`, `title`, `status`, `leadId`, `projectId`, `projectName` |
 | `list-tasks` | User asks what tasks exist | — | Array of tasks in the current organization |
 | `get-task` | User opens or asks about a specific task | `id` | `{ task, events }` including the activity log |

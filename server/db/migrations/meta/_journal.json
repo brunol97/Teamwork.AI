@@ -36,6 +36,13 @@
       "when": 1790676058010,
       "tag": "0004_damp_loners",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790704307027,
+      "tag": "0005_abandoned_manta",
+      "breakpoints": true
     }
   ]
 }

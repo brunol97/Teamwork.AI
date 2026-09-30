@@ -2,6 +2,7 @@ import { useActionMutation, useActionQuery } from "@agent-native/core/client/hoo
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router";
 
+import { ActiveAgentPanel } from "@/components/task/ActiveAgentPanel";
 import { FollowTaskButton, MeldingenPanel } from "@/components/task/MeldingenPanel";
 import { HumanTaskPanel } from "@/components/task/HumanTaskPanel";
 import { InviteLinkPanel } from "@/components/task/InviteLinkPanel";
@@ -198,6 +199,11 @@ export default function TaskDetailRoute() {
 
         <section className="flex min-h-0 flex-col gap-3">
           <HumanTaskPanel taskId={task.id} />
+          <ActiveAgentPanel
+            taskId={task.id}
+            activeAgentId={task.activeAgentId}
+            taskStatus={task.status}
+          />
           <TracerSlicesPanel taskId={task.id} />
           <div className="min-h-0 flex-1 space-y-3 overflow-y-auto rounded-lg border p-4">
             {events.length === 0 ? (
@@ -235,7 +241,7 @@ export default function TaskDetailRoute() {
                 id="message"
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
-                placeholder="Schrijf een bericht aan de agent..."
+                placeholder="Schrijf een bericht aan de agent, bijvoorbeeld @naam..."
                 disabled={isPending}
                 required
               />

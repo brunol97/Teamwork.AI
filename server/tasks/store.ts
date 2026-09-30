@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray } from "@agent-native/core/db/schema";
+import { and, desc, eq, inArray, sql } from "@agent-native/core/db/schema";
 import { randomUUID } from "node:crypto";
 
 import { getDb, type DbTransaction } from "../db/client.js";
@@ -170,6 +170,114 @@ export async function setTaskStatus(
     .returning({ id: tasks.id });
 
   return rows.length > 0;
+}
+
+/**
+ * Wisselen: zet de actieve agent van een taak, of null voor de standaardagent.
+ * De organisatiegrens zit in de `where` van de schrijfactie zelf. Geeft false
+ * terug wanneer er geen taak in deze organisatie is.
+ */
+export async function setTaskActiveAgent(
+  taskId: string,
+  orgId: string,
+  agentId: string | null,
+  db: Pick<DbTransaction, "update" | "select"> = getDb(),
+): Promise<boolean> {
+  const rows = await db
+    .update(tasks)
+    .set({ activeAgentId: agentId, updatedAt: Date.now() })
+    .where(
+      and(
+        eq(tasks.id, taskId),
+        inArray(
+          tasks.projectId,
+          db
+            .select({ id: projects.id })
+            .from(projects)
+            .where(eq(projects.organizationId, orgId)),
+        ),
+      ),
+    )
+    .returning({ id: tasks.id });
+
+  return rows.length > 0;
+}
+
+/** De status van een taak waarvan de agent-activiteit het budget heeft bereikt. */
+export const TASK_STATUS_PAUSED = "gepauzeerd";
+
+export interface AddTaskCostResult {
+  costUsedCents: number;
+  costLimitCents: number;
+  /** true wanneer de taak door deze bijdrage is gepauzeerd (alleen vanuit "bezig"). */
+  gepauzeerd: boolean;
+}
+
+/**
+ * Telt agentkosten bij een taak op en pauzeert de taak bij het bereiken van de
+ * kostengrens (standaard €10). De organisatiegrens zit in de `where` van beide
+ * schrijfacties, zodat de kosten en de pauze nooit een taak van een andere
+ * organisatie raken. Het pauzeren gebeurt alleen vanuit "bezig", zodat een
+ * herhaalde grensgeval geen tweede pauze of melding geeft; de wachtstatus van
+ * een human task ("wacht op iemand") blijft staan.
+ */
+export async function addTaskCost({
+  taskId,
+  orgId,
+  cents,
+}: {
+  taskId: string;
+  orgId: string;
+  cents: number;
+}): Promise<AddTaskCostResult> {
+  const db = getDb();
+  const orgScope = inArray(
+    tasks.projectId,
+    db
+      .select({ id: projects.id })
+      .from(projects)
+      .where(eq(projects.organizationId, orgId)),
+  );
+
+  const rows = await db
+    .update(tasks)
+    .set({
+      costUsedCents: sql`${tasks.costUsedCents} + ${cents}`,
+      updatedAt: Date.now(),
+    })
+    .where(and(eq(tasks.id, taskId), orgScope))
+    .returning({
+      costUsedCents: tasks.costUsedCents,
+      costLimitCents: tasks.costLimitCents,
+      status: tasks.status,
+    });
+
+  const row = rows[0];
+  if (!row) {
+    throw new Error("Task not found.");
+  }
+
+  if (row.costUsedCents < row.costLimitCents || row.status !== "bezig") {
+    return {
+      costUsedCents: row.costUsedCents,
+      costLimitCents: row.costLimitCents,
+      gepauzeerd: false,
+    };
+  }
+
+  const paused = await db
+    .update(tasks)
+    .set({ status: TASK_STATUS_PAUSED, updatedAt: Date.now() })
+    .where(
+      and(eq(tasks.id, taskId), eq(tasks.status, "bezig"), orgScope),
+    )
+    .returning({ id: tasks.id });
+
+  return {
+    costUsedCents: row.costUsedCents,
+    costLimitCents: row.costLimitCents,
+    gepauzeerd: paused.length > 0,
+  };
 }
 
 export async function createTaskEvent(

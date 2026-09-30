@@ -6,7 +6,9 @@ export interface OllamaMessage {
   content: string;
 }
 
-export const DEFAULT_OLLAMA_MODEL = "gpt-oss:120b";
+import { DEFAULT_AGENT_MODEL } from "../../shared/agents/templates.js";
+
+export const DEFAULT_OLLAMA_MODEL = DEFAULT_AGENT_MODEL;
 
 /**
  * `ai-sdk-ollama` appends `/api/chat` to the base URL itself, so the base URL is
