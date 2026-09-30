@@ -62,6 +62,50 @@ if (vercelEnv === "production" || vercelEnv === "preview") {
   warnDatabaseUrlShape(process.env.DATABASE_URL);
 }
 
+// The framework's DDL guard turns every unreadable schema probe into
+// "could not probe required schema", which hides the real cause (bad
+// password, wrong region, rejected startup parameter on the transaction
+// pooler). Probe the connection first and report the true error, so a
+// failed deploy names its cause instead of masking it.
+async function preflightDatabaseConnectivity(): Promise<void> {
+  const { getDbExec, closeDbExec, getDatabaseUrl } = await import("@agent-native/core/db");
+
+  // Scrub the password from anything we print.
+  let password: string | undefined;
+  try {
+    password = new URL(getDatabaseUrl()).password;
+  } catch {
+    // Not a parseable URL — nothing to scrub.
+  }
+  const scrub = (text: string): string =>
+    password && password.length > 0 ? text.split(password).join("<password>") : text;
+
+  const startedAt = Date.now();
+  try {
+    await getDbExec().execute({ sql: "SELECT 1", args: [] });
+    console.log(
+      `[deploy-guard] database connectivity ok (${Date.now() - startedAt} ms)`,
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const cause = (error as { cause?: unknown })?.cause;
+    const causeMessage =
+      cause instanceof Error ? cause.message : typeof cause === "string" ? cause : undefined;
+    console.error(
+      `[deploy-guard] database connectivity FAILED after ${Date.now() - startedAt} ms:`,
+      `\n[deploy-guard]   error: ${scrub(message)}`,
+      causeMessage ? `\n[deploy-guard]   cause: ${scrub(causeMessage)}` : "",
+      "\n[deploy-guard] Migrations are not started. Check the host (region), port (transaction pooler: 6543), and password.",
+    );
+    await closeDbExec().catch(() => {});
+    process.exit(1);
+  }
+}
+
+if (vercelEnv === "production") {
+  await preflightDatabaseConnectivity();
+}
+
 if (vercelEnv === "preview") {
   console.log(
     "[migrate] VERCEL_ENV=preview — skipping database migrations (previews must not mutate the database)",
