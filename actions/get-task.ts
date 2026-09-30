@@ -1,11 +1,12 @@
 import { defineAction, fail } from "@agent-native/core/action";
 import { z } from "zod";
 
+import { listTaskDeelnemers } from "../server/tasks/deelnemers.js";
 import { getTask, listTaskEvents } from "../server/tasks/store.js";
 
 export default defineAction({
   description:
-    "Get a single task by id, including its activity log. Only returns tasks belonging to the current organization.",
+    "Get a single task by id, including its activity log and its deelnemers (the lead plus everyone who contributed according to the activity log). Only returns tasks belonging to the current organization.",
   schema: z.object({
     id: z.string().min(1).describe("Task id"),
   }),
@@ -28,6 +29,6 @@ export default defineAction({
     }
 
     const events = await listTaskEvents(id, orgId);
-    return { task, events };
+    return { task, events, deelnemers: await listTaskDeelnemers(id, orgId) };
   },
 });

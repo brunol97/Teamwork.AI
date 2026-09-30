@@ -18,6 +18,7 @@ import {
 } from "../server/documents/slices.js";
 import { writeTracerSlices } from "../server/documents/slice-store.js";
 import { createMelding, notifyTaskFollowers } from "../server/collaboration/notifications.js";
+import { getOverdrachtNote } from "../server/collaboration/overdracht.js";
 import { generateOllamaResponse } from "../server/llm/ollama.js";
 import {
   addTaskCost,
@@ -29,7 +30,7 @@ import {
 
 export default defineAction({
   description:
-    "Send a message in a task and let the actieve agent respond. The agent is chosen in this order: the explicit agentId, an @naam mention in the message, the actieve agent of the task, otherwise the default agent. An agent can uitbesteden to another agent of the organization (delegatiediepte maximaal 2) and only ever runs with its own tools. Both messages are recorded in the activity log, and every volger of the task gets a melding. When the user asks for a section ('schrijf een sectie over X'), the agent's answer is also added to the werkdocument of the task as a new section. When the user asks for tracer-slices ('maak tracer-slices'), the slice planner answers with slices in the fixed template and adds them as a Tracer-slices section to the werkdocument, referencing only requirements that exist in the document. Agent costs are added to the task; at €10 the task pauses and the lead gets a melding.",
+    "Send a message in a task and let the actieve agent respond. The agent is chosen in this order: the explicit agentId, an @naam mention in the message, the actieve agent of the task, otherwise the default agent. An agent can uitbesteden to another agent of the organization (delegatiediepte maximaal 2) and only ever runs with its own tools. Both messages are recorded in the activity log, and every volger of the task gets a melding. The agent always gets the full context of the task: the complete conversation plus the overdrachtsnotitie, so after a pauze or overdracht it knows what was agreed. When the user asks for a section ('schrijf een sectie over X'), the agent's answer is also added to the werkdocument of the task as a new section. When the user asks for tracer-slices ('maak tracer-slices'), the slice planner answers with slices in the fixed template and adds them as a Tracer-slices section to the werkdocument, referencing only requirements that exist in the document. Agent costs are added to the task; at €10 the task pauses and the lead gets a melding.",
   schema: z.object({
     taskId: z.string().min(1).describe("Task id"),
     message: z.string().min(1).describe("Message to send to the agent"),
@@ -115,11 +116,18 @@ export default defineAction({
         content: event.data ?? "",
       }));
 
+    // De overdrachtsnotitie hoort bij de context van de agent: na een pauze
+    // of overdracht weet de agent zo wat er is afgesproken, zonder dat iemand
+    // het opnieuw hoeft te typen. Bestaat er geen notitie, dan verandert er
+    // niets aan de prompt.
+    const notitie = await getOverdrachtNote(taskId, orgId);
+
     const turn = await runAgentTurn({
       taskTitle: task.title,
       agents: orgAgents,
       agent,
       messages,
+      overdrachtNotitie: notitie?.content ?? null,
       generate: generateOllamaResponse,
       // De actieve versie van elke skill wordt nu gelezen, zodat een agent
       // na een goedgekeurd voorstel meteen de nieuwe versie gebruikt.

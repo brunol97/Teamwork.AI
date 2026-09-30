@@ -3,10 +3,12 @@ import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router";
 
 import { ActiveAgentPanel } from "@/components/task/ActiveAgentPanel";
+import { DocumentSectiesPanel } from "@/components/task/DocumentSectiesPanel";
 import { EvaluatiesPanel } from "@/components/task/EvaluatiesPanel";
 import { FollowTaskButton, MeldingenPanel } from "@/components/task/MeldingenPanel";
 import { HumanTaskPanel } from "@/components/task/HumanTaskPanel";
 import { InviteLinkPanel } from "@/components/task/InviteLinkPanel";
+import { OverdrachtPanel } from "@/components/task/OverdrachtPanel";
 import { PresenceBar } from "@/components/task/PresenceBar";
 import { TracerSlicesPanel } from "@/components/task/TracerSlicesPanel";
 import { Button } from "@/components/ui/button";
@@ -228,10 +230,17 @@ export default function TaskDetailRoute() {
               </Button>
             </div>
           ) : null}
+
+          <DocumentSectiesPanel taskId={task.id} deelnemers={data.deelnemers ?? []} />
         </section>
 
         <section className="flex min-h-0 flex-col gap-3">
           <HumanTaskPanel taskId={task.id} />
+          <OverdrachtPanel
+            taskId={task.id}
+            taskStatus={task.status}
+            leadId={task.leadId}
+          />
           <ActiveAgentPanel
             taskId={task.id}
             activeAgentId={task.activeAgentId}

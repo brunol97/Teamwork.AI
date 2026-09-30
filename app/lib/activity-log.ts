@@ -57,6 +57,45 @@ export function describeEvent(event: ActivityEvent): {
   if (event.type === "budget_gepauzeerd") {
     return { actor, text: event.data ?? "De taak is gepauzeerd." };
   }
+  if (event.type === "task_paused") {
+    return {
+      actor,
+      text: event.data ?? "De taak is gepauzeerd door de lead.",
+    };
+  }
+  if (event.type === "task_hervat") {
+    return {
+      actor,
+      text: event.data ?? "De taak is hervat.",
+    };
+  }
+  if (event.type === "task_overgedragen") {
+    return {
+      actor,
+      text: event.data ?? "De taak is overgedragen.",
+    };
+  }
+  if (event.type === "overdracht_notitie") {
+    const data = payload(event.data);
+    const notitie = text(data?.notitie);
+    const van = text(data?.van);
+    const aan = text(data?.aan);
+    return {
+      actor,
+      text: `Overdrachtsnotitie (gefinaliseerd) van ${van ?? "onbekend"} aan ${aan ?? "onbekend"}:\n${notitie ?? ""}`.trimEnd(),
+    };
+  }
+  if (event.type === "section_assigned") {
+    const data = payload(event.data);
+    const titel = text(data?.title);
+    const toegewezen = text(data?.assigneeId);
+    return {
+      actor,
+      text: titel
+        ? `Onderdeel "${titel}" is toegewezen aan ${toegewezen ?? "onbekend"}.`
+        : "Er is een onderdeel toegewezen.",
+    };
+  }
 
   if (event.type === "document_section_added") {
     return {

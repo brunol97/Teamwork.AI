@@ -12,7 +12,10 @@ import {
   OpenHumanTaskExistsError,
 } from "../server/collaboration/human-tasks.js";
 import { findKnownAnswer } from "../server/collaboration/known-answer.js";
-import { getTask } from "../server/tasks/store.js";
+import {
+  getTask,
+  TASK_STATUS_PAUSED,
+} from "../server/tasks/store.js";
 
 export default defineAction({
   description:
@@ -51,6 +54,16 @@ export default defineAction({
     const task = await getTask(taskId, orgId);
     if (!task) {
       fail("Task not found.", { errorCode: "not_found", statusCode: 404 });
+    }
+
+    // Een gepauzeerde taak accepteert geen nieuwe vragen: de pauze zou anders
+    // stilletjes door de wachtstatus worden vervangen en bij het antwoord
+    // verloren gaan. Hervat eerst de taak (resume-task).
+    if (task.status === TASK_STATUS_PAUSED) {
+      fail(
+        "De taak is gepauzeerd; er kan geen vraag worden gesteld zolang de pauze duurt.",
+        { errorCode: "task_gepauzeerd", statusCode: 409 },
+      );
     }
 
     // Eerst zoeken, dan pas vragen: staat het antwoord al in het werkdocument of

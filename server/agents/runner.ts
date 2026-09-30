@@ -47,8 +47,29 @@ export interface AgentTurnResult {
   costCents: number;
 }
 
-export function defaultSystemPrompt(taskTitle: string): string {
-  return `Je bent een behulpzame agent in Agent Office. Je werkt mee aan de taak "${taskTitle}". Reageer in het Nederlands tenzij de gebruiker anders vraagt. Houd antwoorden kort en bondig.`;
+export function defaultSystemPrompt(
+  taskTitle: string,
+  overdrachtNotitie?: string | null,
+): string {
+  return withOverdrachtNotitie(
+    `Je bent een behulpzame agent in Agent Office. Je werkt mee aan de taak "${taskTitle}". Reageer in het Nederlands tenzij de gebruiker anders vraagt. Houd antwoorden kort en bondig.`,
+    overdrachtNotitie,
+  );
+}
+
+/**
+ * Plaat de overdrachtsnotitie onder de systeemprompt, zodat de agent na een
+ * pauze of overdracht weet wat er is afgesproken. De notitie is context van de
+ * taak, geen instructie: ze staat expliciet gelabeld onderaan.
+ */
+export function withOverdrachtNotitie(
+  system: string,
+  overdrachtNotitie?: string | null,
+): string {
+  if (!overdrachtNotitie?.trim()) {
+    return system;
+  }
+  return `${system}\n\nOverdrachtsnotitie van deze taak (context over de laatste overdracht of pauze):\n${overdrachtNotitie.trim()}`;
 }
 
 /**
@@ -61,6 +82,7 @@ export function buildAgentSystemPrompt(
   agent: AgentConfig,
   taskTitle: string,
   skills?: SkillContent[],
+  overdrachtNotitie?: string | null,
 ): string {
   const lines = [
     `Je bent de agent "${agent.name}" in Agent Office en werkt mee aan de taak "${taskTitle}".`,
@@ -95,7 +117,7 @@ export function buildAgentSystemPrompt(
   lines.push(
     "Reageer in het Nederlands tenzij de gebruiker anders vraagt. Houd antwoorden kort en bondig.",
   );
-  return lines.join("\n");
+  return withOverdrachtNotitie(lines.join("\n"), overdrachtNotitie);
 }
 
 /**
@@ -161,6 +183,7 @@ export async function runAgentTurn({
   depth = 1,
   generate,
   resolveSkills,
+  overdrachtNotitie = null,
 }: {
   taskTitle: string;
   /** Alle agents van de organisatie, zodat de uitbesteding binnen de organisatie blijft. */
@@ -176,11 +199,17 @@ export async function runAgentTurn({
    * goedgekeurde versie van elke skill.
    */
   resolveSkills?: (agent: AgentConfig) => Promise<SkillContent[]>;
+  /**
+   * De overdrachtsnotitie van de taak, of null. Bestaat er een, dan staat ze
+   * in de systeemprompt: de agent heeft na een pauze of overdracht de context
+   * van de handover, zonder dat iemand ze opnieuw hoeft te typen.
+   */
+  overdrachtNotitie?: string | null;
 }): Promise<AgentTurnResult> {
   const skills = agent && resolveSkills ? await resolveSkills(agent) : undefined;
   const system = agent
-    ? buildAgentSystemPrompt(agent, taskTitle, skills)
-    : defaultSystemPrompt(taskTitle);
+    ? buildAgentSystemPrompt(agent, taskTitle, skills, overdrachtNotitie)
+    : defaultSystemPrompt(taskTitle, overdrachtNotitie);
   const reply = await generate(
     system,
     messages,
