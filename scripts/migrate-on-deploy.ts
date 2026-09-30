@@ -15,6 +15,6 @@ if (vercelEnv === "preview") {
   process.exit(0);
 }
 
-const { runAppMigrations } = await import("./app-migrations");
+const { runAppMigrations } = await import("../server/db/app-migrations.js");
 
 await runAppMigrations();
