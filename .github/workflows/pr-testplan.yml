@@ -5,8 +5,10 @@ name: 🧪 TESTPLAN Validator
 
 on:
   pull_request:
+    # No branch filter: stacked PRs (T6-T9) target other posthog/* branches
+    # instead of main, and their checks must run too. The job itself still
+    # only acts on pi-factory/ branches.
     types: [opened, synchronize]
-    branches: [main]
 
 jobs:
   validate:

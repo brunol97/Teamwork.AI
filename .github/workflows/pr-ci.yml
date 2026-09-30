@@ -2,7 +2,8 @@ name: 🔍 PR CI
 
 on:
   pull_request:
-    branches: [main]
+    # No branch filter: stacked PRs (T6-T9) target other posthog/* branches
+    # instead of main, and their checks must run too.
     types: [opened, synchronize, reopened]
 
 concurrency:
