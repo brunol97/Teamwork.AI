@@ -203,6 +203,37 @@ export async function setTaskActiveAgent(
   return rows.length > 0;
 }
 
+/**
+ * Overdragen: zet een nieuwe lead op de taak. De organisatiegrens zit in de
+ * `where` van de schrijfactie zelf. Geeft false terug wanneer er geen taak in
+ * deze organisatie is.
+ */
+export async function setTaskLead(
+  taskId: string,
+  orgId: string,
+  leadId: string,
+  db: Pick<DbTransaction, "update" | "select"> = getDb(),
+): Promise<boolean> {
+  const rows = await db
+    .update(tasks)
+    .set({ leadId, updatedAt: Date.now() })
+    .where(
+      and(
+        eq(tasks.id, taskId),
+        inArray(
+          tasks.projectId,
+          db
+            .select({ id: projects.id })
+            .from(projects)
+            .where(eq(projects.organizationId, orgId)),
+        ),
+      ),
+    )
+    .returning({ id: tasks.id });
+
+  return rows.length > 0;
+}
+
 /** De status van een taak waarvan de agent-activiteit het budget heeft bereikt. */
 export const TASK_STATUS_PAUSED = "gepauzeerd";
 

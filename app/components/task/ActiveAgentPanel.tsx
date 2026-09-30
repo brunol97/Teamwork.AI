@@ -39,8 +39,8 @@ export function ActiveAgentPanel({
         data-testid="taak-gepauzeerd"
         className="rounded-md border p-3 text-sm"
       >
-        Deze taak is gepauzeerd: het agentbudget van €10 is bereikt. De lead
-        heeft een melding gekregen; er gaan geen nieuwe berichten naar de agent.
+        Deze taak is gepauzeerd. Er gaan geen nieuwe berichten naar de agent;
+        iedereen in de organisatie kan de taak hervatten.
       </div>
     );
   }

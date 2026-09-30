@@ -340,6 +340,71 @@ export const evaluations = table(
   ],
 );
 
+/**
+ * Overdrachtsnotitie: een concept dat automatisch wordt opgesteld bij pauzeren
+ * of wisselen, en pas bij finalisatie onveranderlijk in het activiteitenlog
+ * wordt opgenomen. Het concept zelf is aanpasbaar en staat hier; de
+ * gefinaliseerde tekst staat in een `overdracht_notitie`-gebeurtenis in
+ * `task_events` en wordt daarna nooit meer gewijzigd. Er is hoogstens één
+ * open concept per taak (afgedwongen in `server/collaboration/overdracht.ts`).
+ */
+export const overdrachtNotes = table(
+  "overdracht_notities",
+  {
+    id: text("id").primaryKey(),
+    taskId: text("task_id").notNull(),
+    organizationId: text("organization_id").notNull(),
+    /** Het moment waarop het concept ontstond: pauze, wisselen of overdracht. */
+    kind: text("kind").notNull().default("pauze"),
+    content: text("content").notNull(),
+    /** open (aanpasbaar concept) of gefinaliseerd (onveranderlijk in het log). */
+    status: text("status").notNull().default("open"),
+    /** De `task_events`-rij waarin de gefinaliseerde tekst onveranderlijk staat. */
+    finalizedEventId: text("finalized_event_id"),
+    finalizedAt: bigint("finalized_at", { mode: "number" }),
+    createdBy: text("created_by").notNull(),
+    createdAt: bigint("created_at", { mode: "number" }).notNull(),
+    updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
+  },
+  (t) => [
+    index("overdracht_notities_task_id_idx").on(t.taskId),
+    index("overdracht_notities_organization_id_idx").on(t.organizationId),
+  ],
+);
+
+/**
+ * Toewijzing van een onderdeel (sectie) van het werkdocument aan een deelnemer.
+ * De secties zelf staan in de markdown van het werkdocument; de toewijzing is
+ * losse staat, zodat de tekst en de versiebescherming van het document
+ * onaangeroerd blijven. Een sectie heeft hoogstens één toegewezen deelnemer:
+ * opnieuw toewijzen vervangt de vorige toewijzing.
+ */
+export const documentSectionAssignments = table(
+  "document_section_assignments",
+  {
+    id: text("id").primaryKey(),
+    taskId: text("task_id").notNull(),
+    organizationId: text("organization_id").notNull(),
+    /** De kop van de sectie in het werkdocument, zonder #-prefix. */
+    sectionTitle: text("section_title").notNull(),
+    /** De deelnemer (e-mail van een mens of naam van een agent). */
+    assigneeId: text("assignee_id").notNull(),
+    assignedBy: text("assigned_by").notNull(),
+    createdAt: bigint("created_at", { mode: "number" }).notNull(),
+    updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
+  },
+  (t) => [
+    index("document_section_assignments_task_id_idx").on(t.taskId),
+    index("document_section_assignments_organization_id_idx").on(
+      t.organizationId,
+    ),
+    uniqueIndex("document_section_assignments_task_title_unique").on(
+      t.taskId,
+      t.sectionTitle,
+    ),
+  ],
+);
+
 export const taskEvents = table(
   "task_events",
   {
