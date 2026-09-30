@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { parseMention, runAgentTurn } from "../server/agents/runner.js";
 import { listAgents, type AgentConfig } from "../server/agents/store.js";
+import { getActiveSkillsForAgent } from "../server/skills/store.js";
 import { parseSectionRequest } from "../server/documents/markdown.js";
 import {
   addWorkDocumentSection,
@@ -120,6 +121,10 @@ export default defineAction({
       agent,
       messages,
       generate: generateOllamaResponse,
+      // De actieve versie van elke skill wordt nu gelezen, zodat een agent
+      // na een goedgekeurd voorstel meteen de nieuwe versie gebruikt.
+      resolveSkills: (sprekende) =>
+        getActiveSkillsForAgent(orgId, sprekende.skills),
     });
 
     // Een geweigerde uitbesteding hoort bij het antwoord in het gesprek, zodat

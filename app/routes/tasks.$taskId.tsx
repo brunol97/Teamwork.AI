@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router";
 
 import { ActiveAgentPanel } from "@/components/task/ActiveAgentPanel";
+import { EvaluatiesPanel } from "@/components/task/EvaluatiesPanel";
 import { FollowTaskButton, MeldingenPanel } from "@/components/task/MeldingenPanel";
 import { HumanTaskPanel } from "@/components/task/HumanTaskPanel";
 import { InviteLinkPanel } from "@/components/task/InviteLinkPanel";
@@ -39,6 +40,8 @@ export default function TaskDetailRoute() {
     { taskId: taskId ?? "" },
   );
   const { mutate: sendMessage, isPending } = useActionMutation("send-task-message");
+  const { mutate: rondAf, isPending: rondtAf } =
+    useActionMutation("complete-task");
   const { mutate: saveWorkDocument, isPending: isSaving } = useActionMutation(
     "update-work-document",
   );
@@ -127,6 +130,36 @@ export default function TaskDetailRoute() {
         </div>
       </div>
 
+      {task.status !== "klaar" ? (
+        <div className="mb-4">
+          <Button
+            type="button"
+            data-testid="taak-afronden"
+            disabled={rondtAf}
+            onClick={() =>
+              rondAf(
+                { taskId: task.id },
+                {
+                  onError: (error) =>
+                    setConflict(
+                      userFacingActionError(
+                        error,
+                        "Afronden mislukt. Probeer het opnieuw.",
+                      ),
+                    ),
+                },
+              )
+            }
+          >
+            {rondtAf ? "Bezig..." : "Taak afronden"}
+          </Button>
+        </div>
+      ) : (
+        <p className="mb-4 text-sm text-muted-foreground" data-testid="taak-klaar">
+          Deze taak is afgerond; de evaluatie staat hieronder.
+        </p>
+      )}
+
       <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-2">
         <section className="flex min-h-0 flex-col rounded-lg border p-4">
           <div className="mb-2 flex items-center justify-between">
@@ -205,6 +238,7 @@ export default function TaskDetailRoute() {
             taskStatus={task.status}
           />
           <TracerSlicesPanel taskId={task.id} />
+          <EvaluatiesPanel taskId={task.id} />
           <div className="min-h-0 flex-1 space-y-3 overflow-y-auto rounded-lg border p-4">
             {events.length === 0 ? (
               <p className="text-muted-foreground">
