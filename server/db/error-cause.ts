@@ -1,9 +1,9 @@
-import { registerErrorCaptureProvider, type CaptureErrorContext } from "@agent-native/core/server";
+import { registerErrorCaptureProvider } from "@agent-native/core/server";
 
 /** Een foutketen is nooit diep; de grens beschermt alleen tegen een kringverwijzing. */
 const MAX_CAUSE_DEPTH = 5;
 
-export interface DriverCause {
+interface DriverCause {
   name: string;
   code?: string;
   message: string;
@@ -34,18 +34,6 @@ export function driverCause(error: unknown): DriverCause | undefined {
   return { name: typeof cause, message: String(cause) };
 }
 
-/** Zet de driverfout als losse velden in `extra`, dat het framework als `exceptionExtra` meestuurt. */
-export function addDriverCause(error: unknown, context: CaptureErrorContext): void {
-  const cause = driverCause(error);
-  if (!cause) return;
-  context.extra = {
-    ...context.extra,
-    cause_name: cause.name,
-    ...(cause.code ? { cause_code: cause.code } : {}),
-    cause_message: cause.message,
-  };
-}
-
 /**
  * De framework-provider die excepties naar PostHog stuurt, bewaart alleen naam,
  * melding en stack, dus de `cause` gaat verloren. Alle providers krijgen
@@ -55,6 +43,14 @@ export function addDriverCause(error: unknown, context: CaptureErrorContext): vo
  */
 export function registerDriverCauseCapture(): () => void {
   return registerErrorCaptureProvider("driver-cause", (error, context) => {
-    addDriverCause(error, context);
+    const cause = driverCause(error);
+    if (!cause) return;
+    // Het framework stuurt `extra` mee als `exceptionExtra`.
+    context.extra = {
+      ...context.extra,
+      cause_name: cause.name,
+      ...(cause.code ? { cause_code: cause.code } : {}),
+      cause_message: cause.message,
+    };
   });
 }
