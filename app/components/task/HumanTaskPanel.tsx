@@ -9,6 +9,15 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { userFacingActionError } from "@/lib/action-error";
 
+/**
+ * Een nieuwe vraag of een nieuw voorstel komt via de framework-sync: elke
+ * schrijvende actie laat de lijsten meteen opnieuw lezen. De interval is alleen
+ * een vangnet voor een uitgevallen sync. Een korte interval gaf elke open
+ * pagina een databaselezing per seconde, en de serverless-pool heeft maar twee
+ * verbindingen per instantie.
+ */
+const FALLBACK_REFETCH_MS = 15_000;
+
 type HumanTask = {
   id: string;
   taskId: string;
@@ -52,12 +61,12 @@ export function HumanTaskPanel({ taskId }: { taskId?: string }) {
   const { data } = useActionQuery(
     "list-human-tasks",
     {},
-    { refetchInterval: 2000 },
+    { refetchInterval: FALLBACK_REFETCH_MS },
   );
   const { data: mislukt } = useActionQuery(
     "list-human-task-resume-failures",
     taskId ? { taskId } : {},
-    { refetchInterval: 2000 },
+    { refetchInterval: FALLBACK_REFETCH_MS },
   );
   const { mutate: answer, isPending } = useActionMutation("answer-human-task");
   const { mutate: opheffen, isPending: heffing } =
