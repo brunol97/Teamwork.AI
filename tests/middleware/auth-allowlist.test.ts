@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const runAuthGuard = vi.fn();
-const getSession = vi.fn();
-const logout = vi.fn();
+const { runAuthGuard, getSession, logout } = vi.hoisted(() => ({
+  runAuthGuard: vi.fn(),
+  getSession: vi.fn(),
+  logout: vi.fn(),
+}));
 
 vi.mock("@agent-native/core/server", () => ({
   runAuthGuard,
@@ -10,8 +12,10 @@ vi.mock("@agent-native/core/server", () => ({
   logout,
 }));
 
-const setResponseStatus = vi.fn();
-const sendRedirect = vi.fn();
+const { setResponseStatus, sendRedirect } = vi.hoisted(() => ({
+  setResponseStatus: vi.fn(),
+  sendRedirect: vi.fn(),
+}));
 
 vi.mock("h3", () => ({
   defineEventHandler: (handler: unknown) => handler,
