@@ -5,9 +5,14 @@ on:
     # No branch filter: stacked PRs (T6-T9) target other posthog/* branches
     # instead of main, and their checks must run too.
     types: [opened, synchronize, reopened]
+  # Also run on pushes to main: pull_request tests the PR head, but the merge
+  # commit that actually lands on main was never tested otherwise.
+  push:
+    branches: [main]
 
 concurrency:
-  group: ci-${{ github.head_ref }}
+  # head_ref is empty on push events, so fall back to the ref name.
+  group: ci-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -64,6 +69,14 @@ jobs:
 
       - name: Install Chromium
         run: pnpm exec playwright install --with-deps chromium
+
+      - name: Apply database migrations
+        # Run the migration CLI before the dev server boots. Inside the dev
+        # server, framework and app migrations race at boot on PGlite and can
+        # deadlock; doing it first keeps the webServer start deterministic.
+        run: pnpm exec tsx scripts/migrate-on-deploy.ts
+        env:
+          DATABASE_URL: pglite:./data/pglite-e2e
 
       - name: End-to-end tests
         run: pnpm test:e2e

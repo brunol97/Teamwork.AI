@@ -24,10 +24,13 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "pnpm exec agent-native dev",
+    // Apply migrations before the dev server boots. Inside the dev server,
+    // framework and app migrations race at boot on PGlite and can deadlock;
+    // doing it first keeps the webServer start deterministic.
+    command: "pnpm exec tsx scripts/migrate-on-deploy.ts && pnpm exec agent-native dev",
     url: "http://localhost:8080",
     reuseExistingServer: false,
-    timeout: 120_000,
+    timeout: 240_000,
     env: {
       DATABASE_URL: "pglite:./data/pglite-e2e",
       AUTH_DISABLED: "true",
