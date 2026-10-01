@@ -233,6 +233,10 @@ Local development uses PGlite at `data/pglite`. For production and shared enviro
 
 Do not set `runtime.databasePoolMax` or `AGENT_NATIVE_DB_POOL_MAX`. The limit applies to each Vercel instance, and the framework default on serverless is 2 connections. The Supabase session pooler (port 5432) allows 15 clients in total, so a higher limit lets a few warm instances use all clients. Then every query fails with `EMAXCONNSESSION`. The transaction pooler (port 6543) shares its connections between instances and is the better `DATABASE_URL` for Vercel.
 
+The framework already sets the postgres-js options for the transaction pooler: `prepare: false` for a Supabase URL, `connect_timeout: 10` and `idle_timeout: 20` on serverless. The app cannot change them. Each query has an 8s time-out on serverless (`DB_OP_TIMEOUT_MS`), and a failed read retries up to 3 times, so a stuck pool slot shows as a request of about 25s that ends in a 500.
+
+A Drizzle error only says `Failed query: ...`; the real driver error is in its `cause`. The framework exception capture drops that `cause`, so `server/db/error-cause.ts` adds it to every captured exception as `cause_name`, `cause_code` and `cause_message` in `exceptionExtra`. In PostHog, filter `$exception` events on `exceptionExtra.cause_code` (for example `CONNECT_TIMEOUT` or a SQLSTATE such as `57014`).
+
 Real credential values belong only in local `.env` files, deployment configuration, or registered secrets/settings UI. Never commit, document, log, return, paste, or include real keys, tokens, webhook URLs, signing secrets, or private data in examples; use empty values or obvious placeholders.
 
 When adding app data, define tables with `@agent-native/core/db/schema` helpers and use Drizzle's query builder for reads/writes. Keep SQL PostgreSQL-compatible and reserve raw SQL for additive migrations, health checks, or carefully scoped maintenance.

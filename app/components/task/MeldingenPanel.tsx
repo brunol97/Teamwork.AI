@@ -3,6 +3,9 @@ import { useEffect } from "react";
 
 import { Button } from "@/components/ui/button";
 
+/** Vangnet voor een uitgevallen sync; zie `HumanTaskPanel` voor de reden van de lengte. */
+const FALLBACK_REFETCH_MS = 15_000;
+
 type Melding = {
   id: string;
   taskId: string;
@@ -18,9 +21,13 @@ type MeldingResult = { meldingen: Melding[]; ongelezen: number };
  * eenrichtingsbericht van de agent; de volger hoeft niet te antwoorden.
  */
 export function MeldingenPanel({ taskId }: { taskId: string }) {
-  // De framework-sync stuurt een nieuwe melding meteen door; de korte
-  // interval vangt het geval dat die verbinding een keer uitvalt.
-  const { data } = useActionQuery("list-meldingen", {}, { refetchInterval: 2000 });
+  // De framework-sync stuurt een nieuwe melding meteen door; de interval
+  // vangt het geval dat die verbinding een keer uitvalt.
+  const { data } = useActionQuery(
+    "list-meldingen",
+    {},
+    { refetchInterval: FALLBACK_REFETCH_MS },
+  );
   const { mutate: markRead } = useActionMutation("mark-meldingen-read");
 
   const meldingen: Melding[] = (data as MeldingResult | undefined)?.meldingen ?? [];
