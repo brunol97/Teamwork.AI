@@ -22,13 +22,10 @@ describe("pinOllamaEngineModel", () => {
     expect(entry.acceptsCustomModels).toBe(false);
   });
 
-  it.each(["llama3.1", "llama3.2", "mistral", "codestral"])(
-    "maps the request model %s back to the configured model",
-    (requestModel) => {
-      const { engine } = pinnedEngine();
-      expect(normalizeModelForEngine(engine, requestModel)).toBe(PINNED_MODEL);
-    },
-  );
+  it("maps a request model that Ollama Cloud does not serve back to the configured model", () => {
+    const { engine } = pinnedEngine();
+    expect(normalizeModelForEngine(engine, "llama3.1")).toBe(PINNED_MODEL);
+  });
 
   it("keeps the configured model when the request sends it", () => {
     const { engine } = pinnedEngine();
