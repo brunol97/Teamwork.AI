@@ -1,9 +1,14 @@
 import { createAuthPlugin } from "@agent-native/core/server";
 
+import { emailAllowlistPlugin } from "../auth/email-allowlist-plugin.js";
+
 const appTitle = "Agent Office";
 
 export default createAuthPlugin({
   workspaceAppPublicPaths: ["/"],
+  betterAuth: {
+    plugins: [emailAllowlistPlugin],
+  },
   marketing: {
     appName: appTitle,
     learnMoreUrl: "https://github.com/brunol97/Teamwork.AI",
