@@ -26,10 +26,7 @@ let pending:
  * Elk antwoord vervangt de vorige wachttijd, zoals `attachDatabasePool` van
  * `@vercel/functions` doet. Die functie kent de pool van postgres-js niet.
  */
-export function holdUntilPoolIdle(
-  waitUntil: WaitUntil | undefined,
-  ms = IDLE_RELEASE_MS,
-): boolean {
+export function holdUntilPoolIdle(waitUntil: WaitUntil | undefined): boolean {
   if (typeof waitUntil !== "function") {
     return false;
   }
@@ -41,7 +38,7 @@ export function holdUntilPoolIdle(
     const timer = setTimeout(() => {
       pending = undefined;
       resolve();
-    }, ms);
+    }, IDLE_RELEASE_MS);
     pending = { timer, release: resolve };
   });
   waitUntil(promise);
