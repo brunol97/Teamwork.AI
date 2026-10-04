@@ -235,6 +235,8 @@ Do not set `runtime.databasePoolMax` or `AGENT_NATIVE_DB_POOL_MAX`. The limit ap
 
 The framework already sets the postgres-js options for the transaction pooler: `prepare: false` for a Supabase URL, `connect_timeout: 10` and `idle_timeout: 20` on serverless. The app cannot change them. Each query has an 8s time-out on serverless (`DB_OP_TIMEOUT_MS`), and a failed read retries up to 3 times, so a stuck pool slot shows as a request of about 25s that ends in a 500.
 
+Vercel suspends an instance after it sends a response. The `idle_timeout` timer of postgres-js does not run while the instance is suspended, but the pooler drops the connection. Then the next request uses a dead connection: its first query waits for the 8s time-out, and only the retry on a new pool succeeds. `server/plugins/db-idle-release.ts` keeps the instance awake with `waitUntil` for 22s after each response, so postgres-js closes its idle connections before the suspension. In PostHog, `http.response` events with `db_timeout_count > 0` show if this problem comes back.
+
 A Drizzle error only says `Failed query: ...`; the real driver error is in its `cause`. The framework exception capture drops that `cause`, so `server/db/error-cause.ts` adds it to every captured exception as `cause_name`, `cause_code` and `cause_message` in `exceptionExtra`. In PostHog, filter `$exception` events on `exceptionExtra.cause_code` (for example `CONNECT_TIMEOUT` or a SQLSTATE such as `57014`).
 
 Real credential values belong only in local `.env` files, deployment configuration, or registered secrets/settings UI. Never commit, document, log, return, paste, or include real keys, tokens, webhook URLs, signing secrets, or private data in examples; use empty values or obvious placeholders.
